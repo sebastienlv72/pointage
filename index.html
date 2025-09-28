@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pointage Rapide</title>
+    <style>
+        /* Variables et Reset */
+        :root {
+            --primary-color: #2a64c4; /* Bleu corporate */
+            --arrival-color: #4CAF50; /* Vert pour l'arrivée */
+            --departure-color: #F44336; /* Rouge pour le départ */
+            --text-color: #333;
+            --bg-color: #f7f9fc;
+            --shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: var(--bg-color);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* Conteneur principal */
+        .container {
+            background-color: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            width: 100%;
+            max-width: 400px; /* Limite la largeur pour mobile */
+        }
+
+        /* Titres */
+        h1 {
+            color: var(--primary-color);
+            font-size: 1.8em;
+            margin-bottom: 20px;
+        }
+
+        /* Formulaire */
+        #pointageForm {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        label {
+            color: var(--text-color);
+            font-weight: bold;
+            text-align: left;
+            margin-bottom: -5px;
+        }
+
+        input[type="text"] {
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 1.1em;
+            text-align: center;
+        }
+
+        /* Boutons d'action */
+        .button-group {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex-grow: 1;
+            padding: 15px 10px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.2em;
+            font-weight: bold;
+            color: white;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        button:active {
+            opacity: 0.8;
+        }
+
+        /* Couleurs spécifiques des boutons */
+        .btn-arrivee {
+            background-color: var(--arrival-color);
+        }
+        .btn-arrivee:hover {
+            background-color: #43A047;
+        }
+
+        .btn-depart {
+            background-color: var(--departure-color);
+        }
+        .btn-depart:hover {
+            background-color: #E53935;
+        }
+
+        /* Message de statut */
+        #message {
+            margin-top: 25px;
+            padding: 15px;
+            border-radius: 8px;
+            min-height: 20px; /* Maintient l'espace */
+            font-weight: bold;
+            color: var(--text-color);
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>⏰ Pointage Heure</h1>
+        <form id="pointageForm">
+            <label for="employe_id">Votre ID Employé / Badge :</label>
+            <input type="text" id="employe_id" name="employe_id" required placeholder="Ex: 1001 ou votre ID unique">
+            
+            <div class="button-group">
+                <button type="button" class="btn-arrivee" onclick="enregistrerPointage('Arrivee')">
+                    ARRIVÉE
+                </button>
+                <button type="button" class="btn-depart" onclick="enregistrerPointage('Depart')">
+                    DÉPART
+                </button>
+            </div>
+        </form>
+
+        <p id="message"></p>
+    </div>
+
+    <script>
+        // Remplacez par l'URL de l'API fournie par SheetDB ou service similaire
+        const API_URL = 'https://sheetdb.io/api/v1/coc8f5iflpnxi'; 
+
+        async function enregistrerPointage(action) {
+            const employeId = document.getElementById('employe_id').value.trim();
+            const messageElement = document.getElementById('message');
+
+            // 1. Validation visuelle et blocage
+            if (!employeId) {
+                messageElement.textContent = "⚠️ Veuillez entrer votre ID Employé pour pointer.";
+                messageElement.style.color = 'var(--departure-color)';
+                return;
+            }
+
+            // 2. Préparation des données pour l'API
+            const dataToSend = {
+                // Utilisez un format ISO pour la date, plus fiable
+                'timestamp': new Date().toLocaleString('fr-FR', { timeZone: 'Europe/Paris' }),
+                'employe_id': employeId,
+                'action': action
+            };
+
+            messageElement.textContent = "⏳ Enregistrement en cours...";
+            messageElement.style.color = 'var(--primary-color)';
+
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ data: dataToSend })
+                });
+
+                const result = await response.json();
+
+                // 3. Gestion du succès et de l'échec
+                if (response.ok) {
+                    messageElement.textContent = `✅ Pointage ${action.toUpperCase()} enregistré pour ${employeId} à ${new Date().toLocaleTimeString('fr-FR')} !`;
+                    messageElement.style.color = 'var(--arrival-color)';
+                    document.getElementById('employe_id').value = ''; // Réinitialiser le champ
+                } else {
+                    messageElement.textContent = `❌ Erreur lors de l'enregistrement. Vérifiez l'ID et l'API.`;
+                    messageElement.style.color = 'var(--departure-color)';
+                    console.error('Erreur API:', result);
+                }
+            } catch (error) {
+                // 4. Gestion des erreurs réseau
+                messageElement.textContent = "❌ Erreur de connexion réseau ou API : Impossible de communiquer avec le serveur.";
+                messageElement.style.color = 'var(--departure-color)';
+                console.error('Erreur réseau:', error);
+            }
+        }
+    </script>
+</body>
+</html>
