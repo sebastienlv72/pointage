@@ -10,6 +10,7 @@
         :root {
             --primary-color: #2a64c4; 
             --success-color: #4CAF50; 
+            --error-color: #F44336;
             --text-color: #333;
             --bg-color: #f7f9fc;
         }
@@ -20,9 +21,10 @@
         }
         .container {
             background-color: white; padding: 30px; border-radius: 12px;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); width: 100%; max-width: 800px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); width: 100%; max-width: 900px;
         }
         h1 { color: var(--primary-color); font-size: 1.8em; margin-bottom: 20px; text-align: center; }
+        h3 { color: var(--primary-color); padding: 5px 0; margin: 15px 0 5px 0; }
         .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
         input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; flex-grow: 1; }
         button {
@@ -36,19 +38,12 @@
         #loading-message { margin: 15px 0; font-weight: bold; color: var(--text-color); }
         
         /* Styles du Rapport */
-        #report-output h3 { 
-            background-color: #e0e0e0; 
-            padding: 10px; 
-            margin-top: 25px; 
-            margin-bottom: 0;
-            border-top-left-radius: 8px;
-            border-top-right-radius: 8px;
-        }
-        #report-output table { width: 100%; border-collapse: collapse; }
+        #report-output table { width: 100%; border-collapse: collapse; margin-top: 10px; }
         #report-output th, #report-output td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 0.9em; }
         #report-output th { background-color: #f2f2f2; }
         .weekly-total { background-color: #d1e7dd; font-weight: bold; }
         .grand-total { background-color: #b8daff; font-weight: bold; }
+        .raw-data-table th { background-color: #ffe0b2; }
         
         #download-pdf { background-color: var(--success-color); margin-top: 20px; }
     </style>
@@ -77,19 +72,22 @@
         const API_URL = 'https://sheetdb.io/api/v1/coc8f5iflpnxi'; 
         let rawData = []; 
         let reportData = []; 
+        let finalReportData = []; // Données calculées complètes (pour le PDF)
         const searchButton = document.querySelector('button[onclick="fetchAndCalculate()"]');
 
         // ----------------------------------------------------
-        // FONCTION UTILITAIRE : CALCUL DU NUMÉRO DE SEMAINE ISO
+        // FONCTIONS UTILITAIRES
         // ----------------------------------------------------
+        function normalizeId(text) {
+            if (!text) return '';
+            // Supprime les accents et convertit en minuscules
+            return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+        }
+
         function getWeekNumber(d) {
-            // Clonez la date pour ne pas la modifier
             d = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
-            // Mettre le début de la semaine au jeudi (pour la norme ISO)
             d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-            // Obtenir le premier jour de l'année
             const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-            // Calculer le numéro de semaine
             const weekNo = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
             return d.getUTCFullYear() + '-' + String(weekNo).padStart(2, '0');
         }
@@ -120,8 +118,17 @@
         // 2. LOGIQUE DE CALCUL PAR JOUR ET PAR SEMAINE
         // ----------------------------------------------------
         function calculateHours(employeeId) {
-            const employeeData = rawData.filter(d => d.employe_id && d.employe_id.toLowerCase() === employeeId.toLowerCase());
+            const normalizedSearchId = normalizeId(employeeId);
             
+            // Filtrage : utilise l'ID normalisé pour trouver TOUTES les correspondances
+            const employeeData = rawData.filter(d => 
+                d.employe_id && normalizeId(d.employe_id) === normalizedSearchId
+            );
+            
+            if (employeeData.length === 0) {
+                return { reportData: [], grandTotal: "0.00", rawData: [] };
+            }
+
             const weeklyReport = {};
 
             employeeData.forEach(entry => {
@@ -130,10 +137,9 @@
                 const [datePart, timePart] = entry.timestamp.split(' ');
                 const dateKey = datePart; 
                 
-                // Convertir le format FR en format Date JS pour les calculs (AAAA-MM-JJ)
+                // Conversion du format FR (JJ/MM/AAAA) pour la création de Date
                 const entryDateObject = new Date(entry.timestamp.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1 '));
                 
-                // Calculer la semaine
                 const weekKey = getWeekNumber(entryDateObject);
 
                 if (!weeklyReport[weekKey]) {
@@ -164,11 +170,11 @@
             });
 
             // 3. Calculer les totaux journaliers et hebdomadaires
-            reportData = []; // Réinitialiser pour le PDF
+            let finalReportData = [];
             
             for (const weekKey in weeklyReport) {
                 let weeklyTotal = 0;
-                const daysArray = Object.values(weeklyReport[weekKey].days).sort((a, b) => a.dateObj - b.dateObj); // Trier les jours
+                const daysArray = Object.values(weeklyReport[weekKey].days).sort((a, b) => a.dateObj - b.dateObj);
                 
                 daysArray.forEach(day => {
                     let duration = 'N/A';
@@ -186,8 +192,7 @@
                         weeklyTotal += decimalHours;
                     }
 
-                    // Stocker le rapport final dans un format plat pour l'affichage et le PDF
-                    reportData.push({
+                    finalReportData.push({
                         week: weekKey,
                         date: day.date,
                         arrivee: day.arrivee ? day.arrivee.time : '-',
@@ -199,154 +204,28 @@
                 });
                 
                 // Ajouter la ligne de total hebdomadaire
-                reportData.push({
+                finalReportData.push({
                     week: weekKey,
                     isWeeklyTotal: true,
                     decimalHours: weeklyTotal.toFixed(2)
                 });
-                
-                weeklyReport[weekKey].totalHours = weeklyTotal.toFixed(2);
             }
             
-            // Calculer le grand total de la période
-            const grandTotal = reportData
+            const grandTotal = finalReportData
                 .filter(item => item.isWeeklyTotal)
                 .reduce((sum, item) => sum + parseFloat(item.decimalHours), 0)
                 .toFixed(2);
                 
-            return { reportData, grandTotal };
+            return { reportData: finalReportData, grandTotal: grandTotal, rawData: employeeData };
         }
 
         // ----------------------------------------------------
-        // 3. AFFICHAGE ET TÉLÉCHARGEMENT
+        // FONCTION D'AFFICHAGE BRUT
         // ----------------------------------------------------
-        function fetchAndCalculate() {
-            const searchId = document.getElementById('search_id').value.trim();
-            const output = document.getElementById('report-output');
+        function getRawDataHtml(employeeData) {
+            let html = '<h3>Détail Brut des Pointages (Toutes les Lignes)</h3>';
+            html += '<table class="raw-data-table"><thead><tr><th>Date & Heure</th><th>ID Employé</th><th>Action</th></tr></thead><tbody>';
 
-            if (!searchId) {
-                alert("Veuillez entrer un ID Employé.");
-                return;
-            }
-            
-            if (rawData.length === 0) {
-                output.innerHTML = '<p style="color:var(--error-color);">Veuillez attendre le chargement des données ou vérifier votre connexion.</p>';
-                return;
-            }
-
-            const { reportData: results, grandTotal } = calculateHours(searchId);
-            
-            let html = `<h2>Rapport d'heures pour ${searchId}</h2>`;
-            
-            if (results.length <= 1) { // 1 pour la ligne de grand total s'il n'y a qu'une ligne
-                html += '<p>Aucun pointage trouvé pour cet ID.</p>';
-                output.innerHTML = html;
-                document.getElementById('download-pdf').style.display = 'none';
-                return;
-            }
-
-            let currentWeek = '';
-            html += '<table><thead><tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Durée (H:M)</th><th>Heures Décimales</th></tr></thead><tbody>';
-            
-            results.forEach(item => {
-                if (item.isWeeklyTotal) {
-                    // Ligne Total Hebdomadaire
-                    html += `<tr class="weekly-total">
-                                <td colspan="4" style="text-align: right;">TOTAL SEMAINE ${item.week.split('-')[1]} :</td>
-                                <td>${item.decimalHours} h</td>
-                            </tr>`;
-                } else {
-                    // Si c'est un nouveau numéro de semaine, ajouter un titre
-                    if (item.week !== currentWeek) {
-                        html += `<tr><td colspan="5"><h3>SEMAINE ${item.week.split('-')[1]} (${item.week.split('-')[0]})</h3></td></tr>`;
-                        currentWeek = item.week;
-                    }
-                    // Ligne Jour
-                    html += `<tr>
-                                <td>${item.date}</td>
-                                <td>${item.arrivee}</td>
-                                <td>${item.depart}</td>
-                                <td>${item.duration}</td>
-                                <td>${item.decimalHours}</td>
-                            </tr>`;
-                }
-            });
-            
-            // Afficher le Grand Total
-            html += `<tr class="grand-total">
-                        <td colspan="4" style="text-align: right;">GRAND TOTAL PÉRIODE :</td>
-                        <td>${grandTotal} h</td>
-                    </tr>`;
-            html += '</tbody></table>';
-
-            output.innerHTML = html;
-            document.getElementById('download-pdf').style.display = 'block';
-        }
-
-        // 4. Génération PDF
-        function generatePDF() {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            const searchId = document.getElementById('search_id').value.trim();
-            const now = new Date().toLocaleDateString('fr-FR');
-            
-            doc.text(`Rapport détaillé des heures pour ${searchId}`, 14, 20);
-            doc.text(`Généré le: ${now}`, 14, 26);
-
-            let finalTableData = [];
-            let totalHours = 0;
-            let currentY = 30; // Position de départ
-
-            // Filtrer et structurer les données pour le PDF
-            const groupedByWeek = reportData.reduce((acc, item) => {
-                if (!item.week) return acc;
-                if (!acc[item.week]) {
-                    acc[item.week] = { days: [], total: 0 };
-                }
-                if (item.isWeeklyTotal) {
-                    acc[item.week].total = parseFloat(item.decimalHours);
-                    totalHours += parseFloat(item.decimalHours);
-                } else {
-                    acc[item.week].days.push([item.date, item.arrivee, item.depart, item.duration, item.decimalHours]);
-                }
-                return acc;
-            }, {});
-
-            const headers = [["Date", "Arrivée", "Départ", "Durée (H:M)", "Heures Décimales"]];
-
-            for (const weekKey in groupedByWeek) {
-                const year = weekKey.split('-')[0];
-                const weekNum = weekKey.split('-')[1];
-
-                // Ajouter le titre de la semaine
-                doc.text(`SEMAINE ${weekNum} (${year})`, 14, currentY);
-                currentY += 5;
-
-                doc.autoTable({
-                    startY: currentY,
-                    head: headers,
-                    body: groupedByWeek[weekKey].days,
-                    foot: [['', '', '', 'TOTAL SEMAINE:', `${groupedByWeek[weekKey].total.toFixed(2)} h`]],
-                    footStyles: { fontStyle: 'bold', fillColor: '#d1e7dd' },
-                    didParseCell: function (data) {
-                        // Pour que les totaux hebdomadaires ne soient pas coupés
-                        if (data.section === 'foot') {
-                             data.cell.colSpan = 5;
-                             data.cell.styles.halign = 'right';
-                        }
-                    },
-                    margin: { top: 10 },
-                    theme: 'grid'
-                });
-
-                currentY = doc.lastAutoTable.finalY + 10;
-            }
-            
-            // Ajouter le Grand Total à la fin
-            doc.text(`GRAND TOTAL PÉRIODE: ${totalHours.toFixed(2)} h`, 14, currentY);
-
-            doc.save(`Rapport_Semaines_${searchId}_${now.replace(/\//g, '-')}.pdf`);
-        }
-    </script>
-</body>
-</html>
+            const sortedData = [...employeeData].sort((a, b) => {
+                const dateA = new Date(a.timestamp.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1 '));
+                const dateB = new Date
