@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Moteur de Recherche et Rapport d'Heures</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
+    <style>
+        /* (Style CSS omis pour la concision, utilisez le style de votre page de pointage) */
+        #report-output table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        #report-output th, #report-output td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #report-output th { background-color: #f2f2f2; }
+        #download-pdf { margin-top: 20px; padding: 10px 20px; }
+    </style>
+</head>
+<body>
+    <h1>Rechercher les Heures de Travail</h1>
+    <label for="search_id">ID Employé/Nom :</label>
+    <input type="text" id="search_id" placeholder="Ex: Sébastien">
+    <button onclick="fetchAndCalculate()">Rechercher</button>
+    <hr>
+    
+    <div id="loading-message">Chargement des données...</div>
+    
+    <div id="report-output">
+        </div>
+    
+    <button id="download-pdf" style="display:none;" onclick="generatePDF()">Télécharger le PDF</button>
+
+    <script>
+        // <<<< REMPLACER VOTRE LIEN ICI >>>>
+        const API_URL = 'https://sheetdb.io/api/v1/VOTRE_ID_UNIQUE'; 
+        let rawData = []; // Stockera toutes les données brutes
+        let reportData = []; // Stockera les données du rapport filtré
+
+        // ----------------------------------------------------
+        // 1. CHARGEMENT INITIAL DES DONNÉES
+        // ----------------------------------------------------
+        async function loadData() {
+            try {
+                const response = await fetch(API_URL);
+                rawData = await response.json();
+                document.getElementById('loading-message').textContent = "Données chargées. Prêt à rechercher.";
+            } catch (error) {
+                document.getElementById('loading-message').textContent = `Erreur de chargement des données: ${error.message}`;
+            }
+        }
+        loadData();
+
+        // ----------------------------------------------------
+        // 2. LOGIQUE DE CALCUL (LA PARTIE COMPLIQUÉE)
+        // ----------------------------------------------------
+        function calculateHours(employeeId) {
+            const employeeData = rawData.filter(d => d.employe_id.toLowerCase() === employeeId.toLowerCase());
+            
+            // 1. Regrouper les pointages par JOUR
+            const days = {};
+            employeeData.forEach(entry => {
+                // Le timestamp est au format FR (SheetDB) : 28/09/2025 08:00:00
+                const [datePart, timePart] = entry.timestamp.split(' ');
+                const dateKey = datePart; // Utiliser la date comme clé
+                
+                if (!days[dateKey]) {
+                    days[dateKey] = { date: dateKey, arrivee: null, depart: null, points: [] };
+                }
+                
+                // Mettre à jour l'heure la plus récente (MAX) pour Arrivée et Départ
+                const entryTimestamp = new Date(entry.timestamp.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1 '));
+
+                if (entry.action === 'Arrivee') {
+                    if (!days[dateKey].arrivee || entryTimestamp > days[dateKey].arrivee.timestamp) {
+                        days[dateKey].arrivee = { timestamp: entryTimestamp, time: timePart };
+                    }
+                } else if (entry.action === 'Depart') {
+                    if (!days[dateKey].depart || entryTimestamp > days[dateKey].depart.timestamp) {
+                        days[dateKey].depart = { timestamp: entryTimestamp, time: timePart };
+                    }
+                }
+            });
+
+            // 2. Calculer la durée pour chaque jour
+            reportData = Object.values(days).map(day => {
+                let duration = 'N/A';
+                let decimalHours = 0;
+
+                if (day.arrivee && day.depart) {
+                    const diffMs = day.depart.timestamp - day.arrivee.timestamp;
+                    const diffHours = diffMs / (1000 * 60 * 60); // Heures décimales
+                    
+                    const hours = Math.floor(diffHours);
+                    const minutes = Math.round((diffHours - hours) * 60);
+                    
+                    duration = `${hours}h ${minutes}min`;
+                    decimalHours = diffHours.toFixed(2);
+                }
+
+                return {
+                    date: day.date,
+                    arrivee: day.arrivee ? day.arrivee.time : '-',
+                    depart: day.depart ? day.depart.time : '-',
+                    duration: duration,
+                    decimalHours: decimalHours
+                };
+            });
+            
+            return reportData;
+        }
+
+        // ----------------------------------------------------
+        // 3. AFFICHAGE ET TÉLÉCHARGEMENT
+        // ----------------------------------------------------
+        function fetchAndCalculate() {
+            const searchId = document.getElementById('search_id').value.trim();
+            if (!searchId) {
+                alert("Veuillez entrer un ID Employé.");
+                return;
+            }
+            
+            const results = calculateHours(searchId);
+            
+            // Affichage dans le DOM
+            const output = document.getElementById('report-output');
+            let html = `<h2>Rapport d'heures pour ${searchId}</h2>`;
+            
+            if (results.length === 0) {
+                html += '<p>Aucun pointage trouvé pour cet ID.</p>';
+                output.innerHTML = html;
+                document.getElementById('download-pdf').style.display = 'none';
+                return;
+            }
+
+            html += '<table><thead><tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Durée</th><th>Heures Décimales</th></tr></thead><tbody>';
+            
+            let totalDecimalHours = 0;
+            results.forEach(day => {
+                html += `<tr><td>${day.date}</td><td>${day.arrivee}</td><td>${day.depart}</td><td>${day.duration}</td><td>${day.decimalHours}</td></tr>`;
+                totalDecimalHours += parseFloat(day.decimalHours || 0);
+            });
+            
+            // Afficher le total
+            html += `<tr><td colspan="3" style="font-weight: bold; text-align: right;">TOTAL:</td><td></td><td style="font-weight: bold;">${totalDecimalHours.toFixed(2)} h</td></tr>`;
+            html += '</tbody></table>';
+
+            output.innerHTML = html;
+            document.getElementById('download-pdf').style.display = 'block';
+        }
+
+        // 4. Génération PDF
+        function generatePDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const searchId = document.getElementById('search_id').value.trim();
+            const now = new Date().toLocaleDateString('fr-FR');
+
+            doc.text(`Rapport d'heures pour ${searchId}`, 14, 20);
+            doc.text(`Généré le: ${now}`, 14, 26);
+
+            // Préparer les données pour autoTable
+            const headers = [["Date", "Arrivée", "Départ", "Durée", "Heures Décimales"]];
+            const data = reportData.map(d => [d.date, d.arrivee, d.depart, d.duration, d.decimalHours]);
+            
+            // Calculer le total à ajouter au bas du tableau
+            const totalHours = reportData.reduce((sum, d) => sum + parseFloat(d.decimalHours || 0), 0).toFixed(2);
+            
+            doc.autoTable({
+                startY: 30,
+                head: headers,
+                body: data,
+                foot: [['', '', '', 'TOTAL:', `${totalHours} h`]],
+                footStyles: { fontStyle: 'bold' }
+            });
+
+            doc.save(`Rapport_Heures_${searchId}_${now.replace(/\//g, '-')}.pdf`);
+        }
+    </script>
+</body>
+</html>
