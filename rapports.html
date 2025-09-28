@@ -2,71 +2,120 @@
 <html lang="fr">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Moteur de Recherche et Rapport d'Heures</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.5.25/jspdf.plugin.autotable.min.js"></script>
     <style>
-        /* (Style CSS omis pour la concision, utilisez le style de votre page de pointage) */
+        :root {
+            --primary-color: #2a64c4; 
+            --success-color: #4CAF50; 
+            --error-color: #F44336; 
+            --text-color: #333;
+            --bg-color: #f7f9fc;
+            --shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        body {
+            font-family: 'Arial', sans-serif; background-color: var(--bg-color);
+            display: flex; flex-direction: column; align-items: center; 
+            min-height: 100vh; margin: 0; padding: 20px;
+        }
+        .container {
+            background-color: white; padding: 30px; border-radius: 12px;
+            box-shadow: var(--shadow); width: 100%; max-width: 800px;
+        }
+        h1 { color: var(--primary-color); font-size: 1.8em; margin-bottom: 20px; text-align: center; }
+        .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
+        input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; flex-grow: 1; }
+        button {
+            padding: 10px 15px; border: none; border-radius: 6px;
+            font-size: 1em; font-weight: bold; color: white; cursor: pointer;
+            background-color: var(--primary-color); transition: background-color 0.2s;
+        }
+        button:hover:enabled { background-color: #1a4f9f; }
+        button:disabled { background-color: #aaa; cursor: not-allowed; }
+        
+        #loading-message { margin: 15px 0; font-weight: bold; color: var(--text-color); }
         #report-output table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        #report-output th, #report-output td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        #report-output th, #report-output td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 0.9em; }
         #report-output th { background-color: #f2f2f2; }
-        #download-pdf { margin-top: 20px; padding: 10px 20px; }
+        #download-pdf { background-color: var(--success-color); margin-top: 20px; }
+        #download-pdf:hover:enabled { background-color: #3e8e41; }
     </style>
 </head>
 <body>
-    <h1>Rechercher les Heures de Travail</h1>
-    <label for="search_id">ID Employé/Nom :</label>
-    <input type="text" id="search_id" placeholder="Ex: Sébastien">
-    <button onclick="fetchAndCalculate()">Rechercher</button>
-    <hr>
-    
-    <div id="loading-message">Chargement des données...</div>
-    
-    <div id="report-output">
+    <div class="container">
+        <h1>🔍 Moteur de Recherche d'Heures de Travail</h1>
+        
+        <div class="controls">
+            <label for="search_id">ID Employé/Nom :</label>
+            <input type="text" id="search_id" placeholder="Ex: Sébastien">
+            <button onclick="fetchAndCalculate()">Rechercher</button>
         </div>
-    
-    <button id="download-pdf" style="display:none;" onclick="generatePDF()">Télécharger le PDF</button>
+        
+        <div id="loading-message">Chargement des données...</div>
+        <hr>
+        
+        <div id="report-output">
+            </div>
+        
+        <button id="download-pdf" style="display:none;" onclick="generatePDF()">Télécharger le PDF</button>
+    </div>
 
     <script>
-        // <<<< REMPLACER VOTRE LIEN ICI >>>>
-        const API_URL = 'https://sheetdb.io/api/v1/VOTRE_ID_UNIQUE'; 
-        let rawData = []; // Stockera toutes les données brutes
-        let reportData = []; // Stockera les données du rapport filtré
+        // <<<< REMPLACER CETTE LIGNE PAR VOTRE VRAI LIEN SHEETDB >>>>
+        const API_URL = 'https://sheetdb.io/api/v1/coc8f5iflpnxi'; 
+        let rawData = []; 
+        let reportData = []; 
+        const searchButton = document.querySelector('button[onclick="fetchAndCalculate()"]');
 
         // ----------------------------------------------------
         // 1. CHARGEMENT INITIAL DES DONNÉES
         // ----------------------------------------------------
         async function loadData() {
+            searchButton.disabled = true;
+            searchButton.textContent = "Chargement...";
+
             try {
                 const response = await fetch(API_URL);
                 rawData = await response.json();
-                document.getElementById('loading-message').textContent = "Données chargées. Prêt à rechercher.";
+                
+                document.getElementById('loading-message').textContent = "✅ Données chargées. Prêt à rechercher.";
+                
+                searchButton.disabled = false;
+                searchButton.textContent = "Rechercher";
+
             } catch (error) {
-                document.getElementById('loading-message').textContent = `Erreur de chargement des données: ${error.message}`;
+                document.getElementById('loading-message').textContent = `❌ Erreur de chargement des données. Vérifiez l'URL API.`;
             }
         }
         loadData();
 
         // ----------------------------------------------------
-        // 2. LOGIQUE DE CALCUL (LA PARTIE COMPLIQUÉE)
+        // 2. LOGIQUE DE CALCUL
         // ----------------------------------------------------
         function calculateHours(employeeId) {
-            const employeeData = rawData.filter(d => d.employe_id.toLowerCase() === employeeId.toLowerCase());
+            // Filtrer les données pour l'employé recherché (insensible à la casse)
+            const employeeData = rawData.filter(d => d.employe_id && d.employe_id.toLowerCase() === employeeId.toLowerCase());
             
-            // 1. Regrouper les pointages par JOUR
+            // Regrouper les pointages par JOUR
             const days = {};
             employeeData.forEach(entry => {
-                // Le timestamp est au format FR (SheetDB) : 28/09/2025 08:00:00
+                // S'assurer que le timestamp est présent
+                if (!entry.timestamp) return;
+
+                // Le timestamp SheetDB est typiquement 'JJ/MM/AAAA HH:mm:ss'
                 const [datePart, timePart] = entry.timestamp.split(' ');
-                const dateKey = datePart; // Utiliser la date comme clé
+                const dateKey = datePart; 
                 
                 if (!days[dateKey]) {
-                    days[dateKey] = { date: dateKey, arrivee: null, depart: null, points: [] };
+                    days[dateKey] = { date: dateKey, arrivee: null, depart: null };
                 }
                 
-                // Mettre à jour l'heure la plus récente (MAX) pour Arrivée et Départ
+                // Convertir le format FR en format US (AAAA-MM-JJ) pour la création de Date
                 const entryTimestamp = new Date(entry.timestamp.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1 '));
 
+                // Retenir le MAX (le dernier pointage) pour Arrivée et Départ
                 if (entry.action === 'Arrivee') {
                     if (!days[dateKey].arrivee || entryTimestamp > days[dateKey].arrivee.timestamp) {
                         days[dateKey].arrivee = { timestamp: entryTimestamp, time: timePart };
@@ -78,8 +127,8 @@
                 }
             });
 
-            // 2. Calculer la durée pour chaque jour
-            reportData = Object.values(days).map(day => {
+            // Calculer la durée pour chaque jour
+            return Object.values(days).map(day => {
                 let duration = 'N/A';
                 let decimalHours = 0;
 
@@ -90,7 +139,7 @@
                     const hours = Math.floor(diffHours);
                     const minutes = Math.round((diffHours - hours) * 60);
                     
-                    duration = `${hours}h ${minutes}min`;
+                    duration = `${hours}h ${String(minutes).padStart(2, '0')}min`;
                     decimalHours = diffHours.toFixed(2);
                 }
 
@@ -101,9 +150,7 @@
                     duration: duration,
                     decimalHours: decimalHours
                 };
-            });
-            
-            return reportData;
+            }).sort((a, b) => new Date(a.date.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1')) - new Date(b.date.replace(/(\d{2})\/(\d{2})\/(\d{4})/, '$3-$2-$1'))); // Trier par date
         }
 
         // ----------------------------------------------------
@@ -111,33 +158,39 @@
         // ----------------------------------------------------
         function fetchAndCalculate() {
             const searchId = document.getElementById('search_id').value.trim();
+            const output = document.getElementById('report-output');
+
             if (!searchId) {
                 alert("Veuillez entrer un ID Employé.");
                 return;
             }
             
-            const results = calculateHours(searchId);
+            if (rawData.length === 0) {
+                output.innerHTML = '<p style="color:var(--error-color);">Veuillez attendre le chargement des données ou vérifier votre connexion.</p>';
+                return;
+            }
+
+            reportData = calculateHours(searchId); // Stocker le résultat filtré pour le PDF
             
-            // Affichage dans le DOM
-            const output = document.getElementById('report-output');
             let html = `<h2>Rapport d'heures pour ${searchId}</h2>`;
             
-            if (results.length === 0) {
+            if (reportData.length === 0) {
                 html += '<p>Aucun pointage trouvé pour cet ID.</p>';
                 output.innerHTML = html;
                 document.getElementById('download-pdf').style.display = 'none';
                 return;
             }
 
+            // Création du tableau HTML
             html += '<table><thead><tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Durée</th><th>Heures Décimales</th></tr></thead><tbody>';
             
             let totalDecimalHours = 0;
-            results.forEach(day => {
+            reportData.forEach(day => {
                 html += `<tr><td>${day.date}</td><td>${day.arrivee}</td><td>${day.depart}</td><td>${day.duration}</td><td>${day.decimalHours}</td></tr>`;
                 totalDecimalHours += parseFloat(day.decimalHours || 0);
             });
             
-            // Afficher le total
+            // Affichage du total
             html += `<tr><td colspan="3" style="font-weight: bold; text-align: right;">TOTAL:</td><td></td><td style="font-weight: bold;">${totalDecimalHours.toFixed(2)} h</td></tr>`;
             html += '</tbody></table>';
 
@@ -159,7 +212,6 @@
             const headers = [["Date", "Arrivée", "Départ", "Durée", "Heures Décimales"]];
             const data = reportData.map(d => [d.date, d.arrivee, d.depart, d.duration, d.decimalHours]);
             
-            // Calculer le total à ajouter au bas du tableau
             const totalHours = reportData.reduce((sum, d) => sum + parseFloat(d.decimalHours || 0), 0).toFixed(2);
             
             doc.autoTable({
