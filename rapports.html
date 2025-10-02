@@ -10,7 +10,7 @@
         :root {
             --primary-color: #2a64c4; 
             --success-color: #4CAF50; 
-            --error-color: #F44336; /* Rouge pour la suppression */
+            --error-color: #F44336;
             --text-color: #333;
             --bg-color: #f7f9fc;
             --secondary-button: #ff9800;
@@ -18,62 +18,128 @@
         body {
             font-family: 'Arial', sans-serif; background-color: var(--bg-color);
             display: flex; flex-direction: column; align-items: center; 
-            min-height: 100vh; margin: 0; padding: 20px;
+            min-height: 100vh; margin: 0; padding: 10px; /* Moins de padding sur mobile */
         }
         .container {
-            background-color: white; padding: 30px; border-radius: 12px;
+            background-color: white; padding: 20px; /* Moins de padding */
+            border-radius: 12px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); width: 100%; max-width: 900px;
         }
-        h1 { color: var(--primary-color); font-size: 1.8em; margin-bottom: 20px; text-align: center; }
+        h1 { 
+            color: var(--primary-color); 
+            font-size: 1.5em; /* Taille réduite */
+            margin-bottom: 15px; text-align: center; 
+        }
         h3 { color: var(--primary-color); padding: 5px 0; margin: 15px 0 5px 0; }
-        .controls { display: flex; gap: 10px; align-items: center; margin-bottom: 20px; }
-        input[type="text"] { padding: 10px; border: 1px solid #ddd; border-radius: 6px; flex-grow: 1; }
         
-        /* Styles des boutons */
+        /* === ADAPTATION MOBILE DES CONTRÔLES === */
+        .controls { 
+            display: flex; 
+            flex-direction: column; /* Empilement vertical par défaut */
+            gap: 10px; 
+            margin-bottom: 20px; 
+            align-items: stretch; /* Les éléments prennent toute la largeur */
+        }
+        .controls label {
+            font-weight: bold;
+        }
+        input[type="text"] { 
+            padding: 12px; /* Plus grand pour le doigt */
+            border: 1px solid #ddd; border-radius: 6px; 
+            width: auto; /* Nécessaire pour l'align-items: stretch */
+        }
+        
+        /* Styles des boutons (généraux) */
         button {
-            padding: 10px 15px; border: none; border-radius: 6px;
+            padding: 12px 15px; /* Plus grand pour le doigt */
+            border: none; border-radius: 6px;
             font-size: 1em; font-weight: bold; color: white; cursor: pointer;
             background-color: var(--primary-color); transition: background-color 0.2s;
+            width: 100%; /* Prend toute la largeur dans la configuration mobile par défaut */
+            box-sizing: border-box;
         }
-        button:hover:enabled { background-color: #1a4f9f; }
-        button:disabled { background-color: #aaa; cursor: not-allowed; }
-        
-        #toggle-raw-data { background-color: var(--secondary-button); }
-        #toggle-raw-data:hover:enabled { background-color: #e68900; }
+        .controls button {
+            width: 100%;
+        }
 
-        /* NOUVEAU STYLE POUR LE BOUTON DE SUPPRESSION */
+        /* Groupement des boutons Rechecher et Afficher/Masquer */
+        .controls-group {
+            display: flex;
+            gap: 10px;
+        }
+        .controls-group button {
+            width: 50%;
+        }
+
+        #toggle-raw-data { background-color: var(--secondary-button); }
+        
+        /* Bouton de suppression */
         #delete-data { 
             background-color: var(--error-color); 
-            margin-top: 20px;
             font-size: 1.1em;
-            padding: 12px 20px;
-        }
-        #delete-data:hover:enabled { 
-            background-color: #c4322a; 
-            box-shadow: 0 0 10px rgba(244, 67, 54, 0.5);
+            padding: 15px 20px; /* Encore plus grand */
         }
 
         #loading-message { margin: 15px 0; font-weight: bold; color: var(--text-color); }
         
-        /* Styles du Rapport */
-        #report-output table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-        #report-output th, #report-output td { border: 1px solid #ddd; padding: 10px; text-align: left; font-size: 0.9em; }
+        /* === GESTION DES TABLEAUX SUR MOBILE === */
+        .table-wrapper {
+            overflow-x: auto; /* Permet le défilement horizontal */
+            width: 100%;
+            margin-top: 10px;
+        }
+        #report-output table, .raw-data-table { 
+            width: 100%; 
+            min-width: 600px; /* Force une largeur minimale pour les tableaux */
+            border-collapse: collapse; 
+        }
+        #report-output th, #report-output td { 
+            border: 1px solid #ddd; padding: 8px; /* Padding ajusté */
+            text-align: left; font-size: 0.8em; /* Taille de police réduite */
+            white-space: nowrap; /* Empêche la coupure des en-têtes */
+        }
         #report-output th { background-color: #f2f2f2; }
-        .weekly-total { background-color: #d1e7dd; font-weight: bold; }
-        .grand-total { background-color: #b8daff; font-weight: bold; }
+        .weekly-total, .grand-total { font-weight: bold; }
+        .weekly-total { background-color: #d1e7dd; }
+        .grand-total { background-color: #b8daff; }
         .raw-data-table th { background-color: #ffe0b2; }
         
-        #download-pdf { background-color: var(--success-color); margin-top: 20px; }
+        #download-pdf { background-color: var(--success-color); }
 
         .action-buttons {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column; /* Empilement vertical par défaut */
+            gap: 10px;
             margin-top: 25px;
         }
         .action-buttons > div {
             display: flex;
             gap: 10px;
+        }
+
+        /* === Styles pour les écrans plus larges (Tablette/Desktop) === */
+        @media (min-width: 768px) {
+            .controls {
+                flex-direction: row; /* Repasse en ligne sur grand écran */
+            }
+            .controls-group {
+                display: flex;
+                gap: 10px;
+            }
+            .controls-group button {
+                width: auto;
+            }
+            .action-buttons {
+                flex-direction: row; /* Repasse en ligne sur grand écran */
+                justify-content: space-between;
+                align-items: center;
+            }
+            button {
+                width: auto; /* Les boutons reprennent leur largeur de contenu */
+            }
+            .controls button {
+                width: auto;
+            }
         }
     </style>
 </head>
@@ -84,8 +150,10 @@
         <div class="controls">
             <label for="search_id">ID Employé/Nom :</label>
             <input type="text" id="search_id" placeholder="Ex: Sébastien">
-            <button onclick="fetchAndCalculate()">Rechercher</button>
-            <button id="toggle-raw-data" style="display:none;" onclick="toggleRawData()">Masquer les données brutes</button>
+            <div class="controls-group">
+                <button onclick="fetchAndCalculate()">Rechercher</button>
+                <button id="toggle-raw-data" style="display:none;" onclick="toggleRawData()">Masquer les données brutes</button>
+            </div>
         </div>
         
         <div id="loading-message">Chargement des données...</div>
@@ -108,14 +176,14 @@
         // <<<< REMPLACER CETTE LIGNE PAR VOTRE VRAI LIEN SHEETDB >>>>
         const API_URL = 'https://sheetdb.io/api/v1/coc8f5iflpnxi'; 
         let rawData = []; 
-        let finalReportData = []; // Données calculées complètes (pour le PDF)
+        let finalReportData = []; 
         const searchButton = document.querySelector('button[onclick="fetchAndCalculate()"]');
         const toggleButton = document.getElementById('toggle-raw-data');
         const deleteButton = document.getElementById('delete-data');
-        let currentSearchId = ''; // Variable pour stocker l'ID de l'employé en cours
+        let currentSearchId = ''; 
 
         // ----------------------------------------------------
-        // FONCTIONS UTILITAIRES
+        // FONCTIONS UTILITAIRES (Inchangées)
         // ----------------------------------------------------
         function normalizeId(text) {
             if (!text) return '';
@@ -131,12 +199,12 @@
         }
 
         // ----------------------------------------------------
-        // 1. CHARGEMENT INITIAL DES DONNÉES
+        // 1. CHARGEMENT INITIAL DES DONNÉES (Inchangée)
         // ----------------------------------------------------
         async function loadData() {
             searchButton.disabled = true;
             searchButton.textContent = "Chargement...";
-            deleteButton.style.display = 'none'; // Masquer la suppression au chargement
+            deleteButton.style.display = 'none';
 
             try {
                 const response = await fetch(API_URL);
@@ -154,7 +222,7 @@
         loadData();
 
         // ----------------------------------------------------
-        // 2. LOGIQUE DE CALCUL (inchangée)
+        // 2. LOGIQUE DE CALCUL (Inchangée)
         // ----------------------------------------------------
         function calculateHours(employeeId) {
             const normalizedSearchId = normalizeId(employeeId);
@@ -245,11 +313,13 @@
         }
 
         // ----------------------------------------------------
-        // FONCTION D'AFFICHAGE BRUT (inchangée)
+        // FONCTION D'AFFICHAGE BRUT (MODIFIÉE pour wrapper)
         // ----------------------------------------------------
         function getRawDataHtml(employeeData) {
             let html = '<div id="raw-data-section">'; 
             html += '<h3>Détail Brut des Pointages (Toutes les Lignes)</h3>';
+            // Ajout du wrapper pour le défilement horizontal sur mobile
+            html += '<div class="table-wrapper">'; 
             html += '<table class="raw-data-table"><thead><tr><th>Date & Heure</th><th>ID Employé</th><th>Action</th></tr></thead><tbody>';
 
             const sortedData = [...employeeData].sort((a, b) => {
@@ -267,12 +337,13 @@
             });
             
             html += '</tbody></table>';
+            html += '</div>'; // Fermeture du wrapper
             html += '</div>'; 
             return html;
         }
 
         // ----------------------------------------------------
-        // FONCTION TOGGLE BRUT (inchangée)
+        // FONCTION TOGGLE BRUT (Inchangée)
         // ----------------------------------------------------
         function toggleRawData() {
             const rawDataDiv = document.getElementById('raw-data-section');
@@ -288,10 +359,10 @@
         }
 
         // ----------------------------------------------------
-        // 3. FONCTION DE SUPPRESSION DES DONNÉES
+        // 3. FONCTION DE SUPPRESSION DES DONNÉES (Inchangée)
         // ----------------------------------------------------
         async function deleteEmployeeData() {
-            const employeeId = currentSearchId; // Utiliser l'ID stocké
+            const employeeId = currentSearchId; 
             if (!employeeId) return;
 
             const confirmation = confirm(`Êtes-vous SÛR de vouloir SUPPRIMER TOUS les pointages pour l'employé: ${employeeId} ?\n\nCETTE ACTION EST IRRÉVERSIBLE !`);
@@ -301,8 +372,6 @@
             deleteButton.disabled = true;
             deleteButton.textContent = `Suppression en cours pour ${employeeId}...`;
 
-            // Construire l'URL de suppression en utilisant l'ID normalisé pour la requête
-            // IMPORTANT : La requête doit correspondre à la colonne de votre ID Employé (ici 'employe_id')
             const queryUrl = `${API_URL}/employe_id/${employeeId}`; 
 
             try {
@@ -314,12 +383,11 @@
                     const result = await response.json();
                     alert(`✅ Succès ! ${result.deleted || 'Toutes les lignes correspondantes'} ont été supprimées pour ${employeeId}.\n\nVeuillez recharger la page pour mettre à jour les données.`);
                     
-                    // Optionnel : Réinitialiser l'affichage après succès
                     document.getElementById('report-output').innerHTML = '';
                     deleteButton.style.display = 'none';
                     document.getElementById('download-pdf').style.display = 'none';
                     toggleButton.style.display = 'none';
-                    loadData(); // Recharger les données pour mettre à jour le rapport
+                    loadData(); 
                 } else {
                     const errorText = await response.text();
                     alert(`❌ Échec de la suppression pour ${employeeId}. Statut: ${response.status}. Réponse: ${errorText}`);
@@ -334,7 +402,7 @@
 
 
         // ----------------------------------------------------
-        // 4. AFFICHAGE FINAL ET TÉLÉCHARGEMENT
+        // 4. AFFICHAGE FINAL ET TÉLÉCHARGEMENT (MODIFIÉE pour wrapper)
         // ----------------------------------------------------
         function fetchAndCalculate() {
             const searchId = document.getElementById('search_id').value.trim();
@@ -352,7 +420,6 @@
 
             const { reportData: results, grandTotal, rawData: filteredRawData } = calculateHours(searchId); 
             
-            // Stocker l'ID pour la fonction de suppression
             currentSearchId = searchId; 
             finalReportData = results; 
 
@@ -363,7 +430,7 @@
                 output.innerHTML = html;
                 document.getElementById('download-pdf').style.display = 'none';
                 toggleButton.style.display = 'none';
-                deleteButton.style.display = 'none'; // Masquer le bouton s'il n'y a rien à supprimer
+                deleteButton.style.display = 'none';
                 return;
             }
             
@@ -374,6 +441,8 @@
             html += '<h2>Synthèse des Heures Travaillées (Max par Jour)</h2>';
 
             let currentWeek = '';
+            // Ajout du wrapper pour le défilement horizontal sur mobile
+            html += '<div class="table-wrapper">'; 
             html += '<table><thead><tr><th>Date</th><th>Arrivée</th><th>Départ</th><th>Durée (H:M)</th><th>Heures Décimales</th></tr></thead><tbody>';
             
             results.forEach(item => {
@@ -402,15 +471,16 @@
                         <td>${grandTotal} h</td>
                     </tr>`;
             html += '</tbody></table>';
+            html += '</div>'; // Fermeture du wrapper
 
             output.innerHTML = html;
             document.getElementById('download-pdf').style.display = 'block';
             toggleButton.style.display = 'inline-block';
-            deleteButton.style.display = 'block'; // Afficher le bouton de suppression
+            deleteButton.style.display = 'block';
             toggleButton.textContent = 'Masquer les données brutes';
         }
 
-        // 5. Génération PDF (inchangée)
+        // 5. Génération PDF (Inchangée)
         function generatePDF() {
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
