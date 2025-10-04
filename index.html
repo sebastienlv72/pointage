@@ -3,110 +3,166 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pointage - Version Stable</title>
+  <title>Pointage avec UUID - SheetDB</title>
   <style>
     body { font-family: sans-serif; text-align: center; background: #f4f4f9; padding: 20px; }
-    form { max-width: 340px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
-    input, button { margin: 8px 0; padding: 10px; width: 100%; font-size: 16px; border-radius: 8px; border: 1px solid #ccc; }
-    button { background: #375aff; color: white; cursor: pointer; border: none; font-weight: 600; }
-    button:hover { background: #003bff; }
-    table { margin: 20px auto; border-collapse: collapse; width: 90%; }
-    th, td { border: 1px solid #ddd; padding: 8px; }
+    form { max-width: 400px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    input, button { width: 100%; padding: 12px; margin-bottom: 10px; font-size: 16px; border-radius: 8px; border: 1px solid #ccc; }
+    button { cursor: pointer; border: none; font-weight: bold; color: white; background: #375aff; transition: 0.2s; }
+    button:hover:not(:disabled) { background: #003bff; }
+    button#resetBtn { background: #e63946; }
+    button#resetBtn:hover { background: #b71c1c; }
+    #status { margin-top: 15px; font-weight: bold; }
+    table { margin: 20px auto; border-collapse: collapse; width: 95%; background: white; }
+    th, td { border: 1px solid #ddd; padding: 10px; }
     th { background: #375aff; color: white; }
-    #status { margin-top: 15px; font-weight: bold; color: #444; }
   </style>
 </head>
 <body>
 
-  <h1>📋 Système de Pointage</h1>
+<h1>📋 Pointage des Heures</h1>
 
-  <form id="punchForm">
-    <input type="text" id="name" placeholder="Votre Nom Complet" required>
-    <button type="submit" id="punchBtn">Pointer</button>
-  </form>
+<form id="punchForm">
+  <input type="text" id="sheetdbId" placeholder="ID SheetDB (ex: ren8pqvx9agdt)" required>
+  <input type="text" id="name" placeholder="Nom complet" required>
+  <button type="submit" id="punchBtn">Pointer</button>
+  <button type="button" id="resetBtn">Réinitialiser toutes les données</button>
+</form>
 
-  <p id="status">Statut : En attente...</p>
+<p id="status">Statut : en attente...</p>
 
-  <table id="historyTable">
-    <thead>
-      <tr><th>Nom</th><th>Action</th><th>Heure</th><th>Date</th></tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+<table>
+  <thead>
+    <tr>
+      <th>UUID</th>
+      <th>Nom</th>
+      <th>Action</th>
+      <th>Heure</th>
+      <th>Date</th>
+    </tr>
+  </thead>
+  <tbody id="historyTable"></tbody>
+</table>
 
-  <script>
-    const SHEETDB_ID = "3bf3aou6g665c";  // ← Ton ID SheetDB ici
-    const API_URL = `https://sheetdb.io/api/v1/${SHEETDB_ID}`;
-    const tableBody = document.querySelector("#historyTable tbody");
-    const statusDisplay = document.getElementById("status");
+<script>
+const punchForm = document.getElementById("punchForm");
+const punchBtn = document.getElementById("punchBtn");
+const resetBtn = document.getElementById("resetBtn");
+const sheetdbInput = document.getElementById("sheetdbId");
+const nameInput = document.getElementById("name");
+const statusDisplay = document.getElementById("status");
+const tableBody = document.getElementById("historyTable");
 
-    async function loadHistory() {
-      try {
-        const res = await fetch(API_URL);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+// UUID unique par utilisateur
+let userUUID = localStorage.getItem("uuid") || ("uuid-" + Math.random().toString(36).substring(2,9));
+localStorage.setItem("uuid", userUUID);
 
-        tableBody.innerHTML = "";
+// Charger l'ID SheetDB précédent
+if(localStorage.getItem("sheetdb_id")) sheetdbInput.value = localStorage.getItem("sheetdb_id");
 
-        if (!Array.isArray(data) || data.length === 0) {
-          statusDisplay.textContent = "ℹ️ Aucune donnée enregistrée pour le moment.";
-          return;
-        }
-
-        data.forEach(row => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `
-            <td>${row.NomComplet || "-"}</td>
-            <td>${row.TypeAction || "-"}</td>
-            <td>${row.Heure || "-"}</td>
-            <td>${row.Date || "-"}</td>
-          `;
-          tableBody.appendChild(tr);
-        });
-
-        statusDisplay.textContent = "✅ Historique chargé avec succès.";
-      } catch (err) {
-        console.error("Erreur :", err);
-        if (err.message.includes("404")) statusDisplay.textContent = "❌ Erreur : ID SheetDB invalide.";
-        else if (err.message.includes("405")) statusDisplay.textContent = "❌ Erreur : Nom d’onglet ou méthode non autorisée.";
-        else statusDisplay.textContent = "❌ Erreur de chargement des données.";
-      }
+// --- Historique ---
+async function loadHistory(sheetdbId){
+  try {
+    const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}?sort_by=Heure&sort_order=desc`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    tableBody.innerHTML = "";
+    if(!Array.isArray(data) || data.length === 0){
+      statusDisplay.textContent = "ℹ️ Aucune donnée pour le moment.";
+      return;
     }
-
-    async function addPunch(name) {
-      const entry = {
-        data: [{
-          NomComplet: name,
-          TypeAction: "PointageIN",
-          Heure: new Date().toLocaleTimeString("fr-FR", {hour: '2-digit', minute: '2-digit'}),
-          Date: new Date().toLocaleDateString("fr-FR")
-        }]
-      };
-
-      try {
-        const res = await fetch(API_URL, {
-          method: "POST",
-          headers: {"Content-Type": "application/json"},
-          body: JSON.stringify(entry)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        await loadHistory();
-        statusDisplay.textContent = `✅ ${name} a pointé à ${entry.data[0].Heure}`;
-      } catch (err) {
-        console.error("Erreur POST :", err);
-        statusDisplay.textContent = "❌ Erreur lors de l’enregistrement.";
-      }
-    }
-
-    document.getElementById("punchForm").addEventListener("submit", e => {
-      e.preventDefault();
-      const name = document.getElementById("name").value.trim();
-      if (!name) return alert("Veuillez entrer votre nom !");
-      addPunch(name);
+    data.forEach(entry => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${entry.UUID}</td><td>${entry.NomComplet}</td><td>${entry.TypeAction}</td><td>${entry.Heure}</td><td>${entry.Date}</td>`;
+      tableBody.appendChild(tr);
     });
+    statusDisplay.textContent = "✅ Historique chargé.";
+  } catch(e){
+    console.error(e);
+    statusDisplay.textContent = "❌ Erreur de chargement des données.";
+  }
+}
 
-    // Chargement initial
-    loadHistory();
-  </script>
+// --- Déterminer action suivante ---
+async function getNextAction(sheetdbId){
+  try {
+    const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}/search?UUID=${userUUID}&sort_by=Heure&sort_order=desc&limit=1`);
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const lastAction = data[0]?.TypeAction || null;
+    return lastAction === "PointageIN" ? "PointageOUT" : "PointageIN";
+  } catch {
+    return "PointageIN";
+  }
+}
+
+// --- Ajouter un pointage ---
+async function addPunch(sheetdbId, name){
+  const action = await getNextAction(sheetdbId);
+  const now = new Date();
+  const heure = now.toLocaleTimeString("fr-FR", {hour:'2-digit', minute:'2-digit'});
+  const date = now.toLocaleDateString("fr-FR");
+  const payload = {
+    data: [{
+      UUID: userUUID,
+      NomComplet: name,
+      TypeAction: action,
+      Heure: heure,
+      Date: date
+    }]
+  };
+  punchBtn.disabled = true;
+  punchBtn.textContent = "⏳ Envoi...";
+  try{
+    const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}`, {
+      method:"POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
+    });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    statusDisplay.textContent = `✅ ${name} a pointé ${action === "PointageIN" ? "Entrée" : "Sortie"} à ${heure}`;
+    await loadHistory(sheetdbId);
+  } catch(e){
+    console.error(e);
+    statusDisplay.textContent = "❌ Erreur lors de l'enregistrement.";
+  } finally{
+    punchBtn.disabled = false;
+    punchBtn.textContent = "Pointer";
+  }
+}
+
+// --- Réinitialiser la feuille ---
+async function resetSheet(sheetdbId){
+  if(!confirm("⚠️ Tout sera supprimé. Confirmer ?")) return;
+  try{
+    const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}/all`, { method:"DELETE" });
+    if(!res.ok) throw new Error(`HTTP ${res.status}`);
+    tableBody.innerHTML = "";
+    statusDisplay.textContent = "🗑️ Toutes les données ont été supprimées.";
+  } catch(e){
+    console.error(e);
+    statusDisplay.textContent = "❌ Erreur lors de la réinitialisation.";
+  }
+}
+
+// --- Événements ---
+punchForm.addEventListener("submit", e=>{
+  e.preventDefault();
+  const sheetdbId = sheetdbInput.value.trim();
+  const name = nameInput.value.trim();
+  if(!sheetdbId || !name){ statusDisplay.textContent="⚠️ Remplir tous les champs."; return;}
+  localStorage.setItem("sheetdb_id", sheetdbId);
+  addPunch(sheetdbId, name);
+});
+
+resetBtn.addEventListener("click", ()=>{
+  const sheetdbId = sheetdbInput.value.trim();
+  if(sheetdbId) resetSheet(sheetdbId);
+});
+
+// Chargement initial
+if(sheetdbInput.value) loadHistory(sheetdbInput.value);
+</script>
+
 </body>
 </html>
