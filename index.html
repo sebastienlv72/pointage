@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage + Temps de Travail</title>
+<title>Pointage & Temps de Travail</title>
 <style>
 body { font-family:'Inter',sans-serif; text-align:center; padding:20px; background:#f4f4f9; }
 #formContainer {background:#fff; max-width:400px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
@@ -23,14 +23,17 @@ button:hover {background:#2a4ae3;}
   <button id="punchIn">Pointer Entrée</button>
   <button id="punchOut">Pointer Sortie</button>
   <button id="calculate">Calculer temps de travail</button>
-  <button id="sendEmail">Envoyer par mail (PDF)</button>
+  <button id="generatePDF">Télécharger PDF</button>
 </div>
 
 <div id="status">Statut : En attente...</div>
 <div id="result"></div>
 
+<!-- jsPDF depuis CDN -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 const uuid = localStorage.getItem("punch_uuid") || generateUUID();
+let totalWorkTime = null;
 
 function generateUUID() {
   const id = 'web-' + Date.now().toString(36) + Math.random().toString(36).substr(2,6);
@@ -83,8 +86,6 @@ function formatDuration(totalMinutes){
 }
 
 async function calculateTime() {
-  const sheetdbId = document.getElementById("sheetdbId").value.trim();
-  const name = document.getElementById("name").value.trim();
   const status = document.getElementById("status");
   const result = document.getElementById("result");
   status.textContent = "⏳ Calcul en cours...";
@@ -95,14 +96,10 @@ async function calculateTime() {
     const res = await fetch(url);
     if(!res.ok) throw new Error("Erreur HTTP "+res.status);
     const data = await res.json();
-    if(data.length===0){ status.textContent="❌ Aucun pointage trouvé"; return; }
+    if(data.length===0){ status.textContent="❌ Aucun pointage trouvé"; return null; }
 
-    // Trier par date+heure
-    data.sort((a,b)=>{
-      return new Date(a.Date + " " + a.Heure) - new Date(b.Date + " " + b.Heure);
-    });
+    data.sort((a,b)=>new Date(a.Date + " " + a.Heure) - new Date(b.Date + " " + b.Heure));
 
-    // Calculer temps total
     let total = 0, lastIN=null;
     data.forEach(r=>{
       if(r.TypeAction==="PointageIN") lastIN = r.Heure;
@@ -112,45 +109,37 @@ async function calculateTime() {
       }
     });
 
+    totalWorkTime = formatDuration(total);
     status.textContent="✅ Temps total calculé :";
-    result.textContent=formatDuration(total);
-    return formatDuration(total);
+    result.textContent=totalWorkTime;
+    return totalWorkTime;
 
   } catch(err){
     status.textContent="❌ Erreur : "+err.message;
+    return null;
   }
 }
 
-async function sendPDF() {
+function generatePDF() {
+  if(!totalWorkTime) { alert("Calculer le temps de travail d'abord"); return; }
+
   const name = document.getElementById("name").value.trim();
-  const sheetdbId = document.getElementById("sheetdbId").value.trim();
-  if(!name || !sheetdbId){ alert("Remplissez tous les champs"); return; }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF();
 
-  const totalTime = await calculateTime();
-  if(!totalTime) return;
+  doc.text(`Rapport de pointage`, 10, 20);
+  doc.text(`Nom: ${name}`, 10, 30);
+  doc.text(`UUID: ${uuid}`, 10, 40);
+  doc.text(`Temps total travaillé: ${totalWorkTime}`, 10, 50);
 
-  const payload = {
-    name, uuid, totalTime, sheetdbId
-  };
-
-  const scriptUrl = "https://script.google.com/macros/s/AKfycbynD-WaB1Q1I2NkGGEL1Q33U7uFS-zYfMq4nYJDLDMVJLDL_hjKadtL2sWECGELqQNe/exec"; // Remplace par ton Apps Script
-  try {
-    const res = await fetch(scriptUrl,{
-      method:"POST",
-      body:JSON.stringify(payload),
-      headers:{"Content-Type":"application/json"}
-    });
-    const text = await res.text();
-    alert("✅ E-mail envoyé !\n"+text);
-  } catch(err){
-    alert("❌ Erreur envoi e-mail : "+err.message);
-  }
+  doc.save(`Pointage_${name}.pdf`);
 }
 
+// Événements
 document.getElementById("punchIn").addEventListener("click", ()=>postPunch("PointageIN"));
 document.getElementById("punchOut").addEventListener("click", ()=>postPunch("PointageOUT"));
 document.getElementById("calculate").addEventListener("click", calculateTime);
-document.getElementById("sendEmail").addEventListener("click", sendPDF);
+document.getElementById("generatePDF").addEventListener("click", generatePDF);
 </script>
 
 </body>
