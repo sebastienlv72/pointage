@@ -1,171 +1,112 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Système de Pointage Hybride</title>
-  <style>
-    body {
-      font-family: 'Inter', sans-serif;
-      text-align: center;
-      padding: 20px;
-      background-color: #f4f4f9;
-    }
-    #punchForm {
-      background: #fff;
-      max-width: 350px;
-      margin: 20px auto;
-      padding: 25px;
-      border-radius: 12px;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
-    }
-    input, button, select {
-      padding: 10px;
-      margin: 10px 0;
-      width: 100%;
-      border-radius: 8px;
-      border: 1px solid #ddd;
-      font-size: 16px;
-    }
-    button {
-      cursor: pointer;
-      background: #3b5bff;
-      color: #fff;
-      font-weight: 600;
-      border: none;
-    }
-    button:hover {
-      background: #2a4ae3;
-    }
-    #status {
-      margin-top: 15px;
-      font-weight: 500;
-    }
-    #uuidInfo {
-      font-size: 12px;
-      color: #777;
-    }
-    .danger {
-      background: #ff5252;
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Pointage SheetDB - Version Améliorée</title>
+<style>
+body { font-family:'Inter',sans-serif; text-align:center; padding:20px; background:#f4f4f9; }
+#punchForm {background:#fff; max-width:350px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+input, button {padding:10px; margin:10px 0; width:100%; border-radius:8px; border:1px solid #ddd; font-size:16px;}
+button {cursor:pointer; background:#3b5bff; color:#fff; font-weight:600; border:none;}
+button:hover {background:#2a4ae3;}
+button.danger {background:#ff5252;}
+#status {margin-top:15px; font-weight:500;}
+#uuidInfo {font-size:12px; color:#777;}
+</style>
 </head>
 <body>
 
-  <h1>Pointage des Heures</h1>
+<h1>Pointage des Heures</h1>
 
-  <form id="punchForm">
-    <label for="dbSource">📦 Base de Données :</label>
-    <select id="dbSource">
-      <option value="apps">Google Sheet (Apps Script)</option>
-      <option value="sheetdb">SheetDB.io</option>
-    </select>
+<form id="punchForm">
+  <input type="text" id="sheetdbId" placeholder="ID SheetDB (ex: ren8pqvx9agdt)" required>
+  <input type="text" id="name" placeholder="Votre nom complet" required>
+  <button type="submit" id="punchIn">Pointer Entrée</button>
+  <button type="button" id="punchOut">Pointer Sortie</button>
+  <button type="button" id="resetData" class="danger">🗑️ Réinitialiser mes données</button>
+</form>
 
-    <input type="text" id="sheetdbId" placeholder="ID SheetDB (ex: ren8pqvx9agdt)">
-    <input type="text" id="name" placeholder="Votre nom complet" required>
+<div id="status">Statut : En attente...</div>
+<p id="uuidInfo"></p>
 
-    <button type="submit" id="punchIn">Pointer Entrée</button>
-    <button type="button" id="punchOut">Pointer Sortie</button>
-    <button type="button" id="resetData" class="danger">🗑️ Réinitialiser mes données</button>
-  </form>
+<script>
+const uuid = localStorage.getItem("punch_uuid") || generateUUID();
+document.getElementById("uuidInfo").textContent = "UUID : " + uuid;
 
-  <div id="status">Statut : En attente...</div>
-  <p id="uuidInfo"></p>
+function generateUUID() {
+  const id = 'web-' + Date.now().toString(36) + Math.random().toString(36).substr(2,6);
+  localStorage.setItem("punch_uuid", id);
+  return id;
+}
 
-  <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz3FBKH-cxcIdFoMiPLwJ8eG7SCz8ChBkCzVhCmi_iyYcSIhrnRkNCX--UWMJiNmcCP/exec"; // 🔗 ton Apps Script
-    const uuid = localStorage.getItem("punch_uuid") || generateUUID();
-    document.getElementById("uuidInfo").textContent = "UUID : " + uuid;
+function getAPIUrl() {
+  const sheetdbId = document.getElementById("sheetdbId").value.trim();
+  if(!sheetdbId) throw new Error("ID SheetDB manquant");
+  return `https://sheetdb.io/api/v1/${sheetdbId}`;
+}
 
-    // Charger le mode et l’ID SheetDB précédents
-    const savedDb = localStorage.getItem("dbSource") || "apps";
-    const savedSheetDB = localStorage.getItem("sheetdbId") || "";
-    document.getElementById("dbSource").value = savedDb;
-    document.getElementById("sheetdbId").value = savedSheetDB;
-
-    function generateUUID() {
-      const id = 'web-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
-      localStorage.setItem("punch_uuid", id);
-      return id;
-    }
-
-    function getDatabaseURL() {
-      const dbType = document.getElementById("dbSource").value;
-      localStorage.setItem("dbSource", dbType);
-
-      if (dbType === "sheetdb") {
-        const sheetdbId = document.getElementById("sheetdbId").value.trim();
-        if (!sheetdbId) {
-          alert("⚠️ Veuillez entrer l’ID SheetDB.");
-          throw new Error("SheetDB ID manquant");
-        }
-        localStorage.setItem("sheetdbId", sheetdbId);
-        return `https://sheetdb.io/api/v1/${sheetdbId}`;
-      }
-      return SCRIPT_URL;
-    }
-
-    async function sendData(data, method = "POST") {
-      const dbType = document.getElementById("dbSource").value;
-      const url = getDatabaseURL();
-
-      if (dbType === "sheetdb") {
-        if (data.action === "reset") {
-          // Suppression via SheetDB
-          return fetch(`${url}/UUID/${uuid}`, { method: "DELETE" });
-        } else {
-          return fetch(url, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ data: [data] })
-          });
-        }
-      } else {
-        // Google Apps Script
-        return fetch(url, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(data)
-        });
-      }
-    }
-
-    document.getElementById("punchForm").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const name = document.getElementById("name").value.trim();
-      const data = { uuid, name, type: "PointageIN" };
-      document.getElementById("status").textContent = "⏳ Enregistrement...";
-      try {
-        const res = await sendData(data);
-        const result = await res.json();
-        document.getElementById("status").textContent = result.success ? "✅ Entrée enregistrée" : "✅ Enregistrement terminé (SheetDB)";
-      } catch (err) {
-        document.getElementById("status").textContent = "❌ " + err.message;
-      }
+async function postPunch(type) {
+  const name = document.getElementById("name").value.trim();
+  if(!name) { alert("Veuillez entrer votre nom complet"); return; }
+  const url = getAPIUrl();
+  const payload = {
+    data: [{
+      UUID: uuid,
+      NomComplet: name,
+      TypeAction: type,
+      Date: new Date().toLocaleDateString('fr-FR'),
+      Heure: new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'}),
+      active: true
+    }]
+  };
+  try {
+    document.getElementById("status").textContent = "⏳ Enregistrement...";
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify(payload)
     });
+    const data = await res.json();
+    document.getElementById("status").textContent = "✅ " + type + " enregistrée";
+  } catch(err) {
+    console.error(err);
+    document.getElementById("status").textContent = "❌ Erreur : " + err.message;
+  }
+}
 
-    document.getElementById("punchOut").addEventListener("click", async () => {
-      const name = document.getElementById("name").value.trim();
-      const data = { uuid, name, type: "PointageOUT" };
-      document.getElementById("status").textContent = "⏳ Enregistrement...";
-      try {
-        const res = await sendData(data);
-        const result = await res.json();
-        document.getElementById("status").textContent = result.success ? "✅ Sortie enregistrée" : "✅ Enregistrement terminé (SheetDB)";
-      } catch (err) {
-        document.getElementById("status").textContent = "❌ " + err.message;
-      }
+async function resetUser() {
+  if(!confirm("⚠️ Voulez-vous réinitialiser vos données ?")) return;
+  try {
+    const url = getAPIUrl();
+    // PATCH SheetDB pour mettre active=false pour l'UUID
+    const res = await fetch(`${url}/UUID/${uuid}`, {
+      method: "PATCH",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ data: [{ active: false }] })
     });
+    if(res.ok) {
+      document.getElementById("status").textContent = "🗑️ Données désactivées";
+    } else {
+      document.getElementById("status").textContent = "❌ Erreur PATCH (HTTP "+res.status+")";
+    }
+  } catch(err) {
+    console.error(err);
+    document.getElementById("status").textContent = "❌ Erreur : " + err.message;
+  }
+}
 
-    document.getElementById("resetData").addEventListener("click", async () => {
-      if (!confirm("⚠️ Supprimer toutes vos données ?")) return;
-      try {
-        const res = await sendData({ uuid, action: "reset" });
-        document.getElementById("status").textContent = "🗑️ Données supprimées.";
-      } catch (err) {
-        document.getElementById("status").textContent = "❌ " + err.message;
-      }
-    });
-  </script>
+document.getElementById("punchForm").addEventListener("submit", (e) => {
+  e.preventDefault();
+  postPunch("PointageIN");
+});
+
+document.getElementById("punchOut").addEventListener("click", () => {
+  postPunch("PointageOUT");
+});
+
+document.getElementById("resetData").addEventListener("click", resetUser);
+</script>
+
 </body>
 </html>
