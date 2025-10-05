@@ -3,14 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage SheetDB - Version Corrigée</title>
+<title>Pointage SheetDB</title>
 <style>
 body { font-family:'Inter',sans-serif; text-align:center; padding:20px; background:#f4f4f9; }
 #punchForm {background:#fff; max-width:350px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
 input, button {padding:10px; margin:10px 0; width:100%; border-radius:8px; border:1px solid #ddd; font-size:16px;}
 button {cursor:pointer; background:#3b5bff; color:#fff; font-weight:600; border:none;}
 button:hover {background:#2a4ae3;}
-button.danger {background:#ff5252;}
 #status {margin-top:15px; font-weight:500;}
 #uuidInfo {font-size:12px; color:#777;}
 </style>
@@ -24,7 +23,6 @@ button.danger {background:#ff5252;}
   <input type="text" id="name" placeholder="Votre nom complet" required>
   <button type="submit" id="punchIn">Pointer Entrée</button>
   <button type="button" id="punchOut">Pointer Sortie</button>
-  <button type="button" id="resetData" class="danger">🗑️ Réinitialiser mes données</button>
 </form>
 
 <div id="status">Statut : En attente...</div>
@@ -56,8 +54,7 @@ async function postPunch(type) {
       NomComplet: name,
       TypeAction: type,
       Date: new Date().toLocaleDateString('fr-FR'),
-      Heure: new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'}),
-      active: true
+      Heure: new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})
     }]
   };
   try {
@@ -78,30 +75,6 @@ async function postPunch(type) {
   }
 }
 
-async function resetUser() {
-  if(!confirm("⚠️ Voulez-vous réinitialiser vos données ?")) return;
-  try {
-    const sheetdbId = document.getElementById("sheetdbId").value.trim();
-    if(!sheetdbId) throw new Error("ID SheetDB manquant");
-    const url = `https://sheetdb.io/api/v1/${sheetdbId}/search?UUID=${uuid}`;
-
-    const res = await fetch(url, {
-      method: "PATCH",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ data: [{ active: false }] })
-    });
-
-    if(res.ok){
-      document.getElementById("status").textContent = "🗑️ Données désactivées pour cet utilisateur";
-    } else {
-      document.getElementById("status").textContent = "❌ Erreur PATCH (HTTP "+res.status+")";
-    }
-  } catch(err) {
-    console.error(err);
-    document.getElementById("status").textContent = "❌ Erreur : " + err.message;
-  }
-}
-
 document.getElementById("punchForm").addEventListener("submit", (e) => {
   e.preventDefault();
   postPunch("PointageIN");
@@ -110,8 +83,6 @@ document.getElementById("punchForm").addEventListener("submit", (e) => {
 document.getElementById("punchOut").addEventListener("click", () => {
   postPunch("PointageOUT");
 });
-
-document.getElementById("resetData").addEventListener("click", resetUser);
 </script>
 
 </body>
