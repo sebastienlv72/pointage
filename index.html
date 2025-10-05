@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🕐 Pointage Heures - SheetDB Pro</title>
+  <title>🕐 Pointage - SheetDB Simplifié</title>
   <style>
     body {
       font-family: "Inter", sans-serif;
-      background: #f4f4f9;
+      background: #f6f8fa;
       margin: 0;
-      padding: 20px;
+      padding: 30px;
       text-align: center;
     }
 
     h1 {
       color: #222;
-      margin-bottom: 15px;
+      margin-bottom: 20px;
     }
 
     form {
@@ -27,14 +27,14 @@
       box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
     }
 
-    input,
-    button {
+    input, button {
       width: 100%;
       padding: 12px;
       font-size: 16px;
       margin-bottom: 12px;
       border: 1px solid #ccc;
       border-radius: 8px;
+      box-sizing: border-box;
     }
 
     button {
@@ -69,29 +69,6 @@
       color: #333;
     }
 
-    table {
-      width: 95%;
-      margin: 25px auto;
-      border-collapse: collapse;
-      background: white;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
-    }
-
-    th,
-    td {
-      padding: 10px;
-      border: 1px solid #ddd;
-      font-size: 14px;
-    }
-
-    th {
-      background: #375aff;
-      color: white;
-      text-transform: uppercase;
-    }
-
     #loader {
       display: none;
       margin: 20px auto;
@@ -121,24 +98,11 @@
     <input type="text" id="sheetdbId" placeholder="ID SheetDB ou URL complète" required />
     <input type="text" id="name" placeholder="Nom complet" required />
     <button type="submit" id="punchBtn">Pointer</button>
-    <button type="button" id="resetBtn">Réinitialiser</button>
+    <button type="button" id="resetBtn">Réinitialiser la base</button>
   </form>
 
   <div id="loader"><div class="spinner"></div><p>Chargement...</p></div>
   <p id="status">Statut : en attente...</p>
-
-  <table>
-    <thead>
-      <tr>
-        <th>UUID</th>
-        <th>Nom</th>
-        <th>Action</th>
-        <th>Heure</th>
-        <th>Date</th>
-      </tr>
-    </thead>
-    <tbody id="historyTable"></tbody>
-  </table>
 
   <script>
     const form = document.getElementById("punchForm");
@@ -147,14 +111,16 @@
     const statusDisplay = document.getElementById("status");
     const loader = document.getElementById("loader");
     const sheetdbInput = document.getElementById("sheetdbId");
-    const tableBody = document.getElementById("historyTable");
 
+    // UUID unique par utilisateur
     let userUUID = localStorage.getItem("uuid") || "uuid-" + Math.random().toString(36).substring(2, 9);
     localStorage.setItem("uuid", userUUID);
 
-    if (localStorage.getItem("sheetdb_id")) sheetdbInput.value = localStorage.getItem("sheetdb_id");
+    if (localStorage.getItem("sheetdb_id")) {
+      sheetdbInput.value = localStorage.getItem("sheetdb_id");
+    }
 
-    // ✅ Extrait l'ID SheetDB même si URL complète
+    // Extrait ID SheetDB (même depuis une URL complète)
     function extractSheetDBId(input) {
       const match = input.match(/([a-z0-9]{12,})$/i);
       return match ? match[1] : null;
@@ -164,34 +130,7 @@
       loader.style.display = show ? "block" : "none";
     }
 
-    // 🔹 Charger l’historique
-    async function loadHistory(sheetdbId) {
-      showLoader(true);
-      try {
-        const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}?sort_by=Heure&sort_order=desc`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        tableBody.innerHTML = "";
-        if (!Array.isArray(data) || data.length === 0) {
-          statusDisplay.textContent = "ℹ️ Aucune donnée disponible.";
-          showLoader(false);
-          return;
-        }
-        data.forEach((entry) => {
-          const tr = document.createElement("tr");
-          tr.innerHTML = `<td>${entry.UUID}</td><td>${entry.NomComplet}</td><td>${entry.TypeAction}</td><td>${entry.Heure}</td><td>${entry.Date}</td>`;
-          tableBody.appendChild(tr);
-        });
-        statusDisplay.textContent = "✅ Historique chargé avec succès.";
-      } catch (e) {
-        console.error(e);
-        statusDisplay.textContent = "❌ Erreur de chargement : " + e.message;
-      } finally {
-        showLoader(false);
-      }
-    }
-
-    // 🔹 Déterminer prochaine action
+    // Obtenir la prochaine action (entrée/sortie)
     async function getNextAction(sheetdbId) {
       try {
         const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}/search?UUID=${userUUID}&sort_by=Heure&sort_order=desc&limit=1`);
@@ -204,52 +143,52 @@
       }
     }
 
-    // 🔹 Ajouter un pointage
+    // Ajouter un pointage
     async function addPunch(sheetdbId, name) {
       const action = await getNextAction(sheetdbId);
       const now = new Date();
       const heure = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
       const date = now.toLocaleDateString("fr-FR");
+
       const payload = {
-        data: [
-          {
-            UUID: userUUID,
-            NomComplet: name,
-            TypeAction: action,
-            Heure: heure,
-            Date: date,
-          },
-        ],
+        data: [{
+          UUID: userUUID,
+          NomComplet: name,
+          TypeAction: action,
+          Heure: heure,
+          Date: date
+        }]
       };
 
       punchBtn.disabled = true;
       punchBtn.textContent = "⏳ Envoi...";
+      showLoader(true);
+
       try {
         const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(payload)
         });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         statusDisplay.textContent = `✅ ${name} a pointé ${action === "PointageIN" ? "Entrée" : "Sortie"} à ${heure}`;
-        await loadHistory(sheetdbId);
       } catch (e) {
         console.error(e);
         statusDisplay.textContent = "❌ Erreur lors de l’enregistrement : " + e.message;
       } finally {
         punchBtn.disabled = false;
         punchBtn.textContent = "Pointer";
+        showLoader(false);
       }
     }
 
-    // 🔹 Réinitialiser les données
+    // Réinitialiser la base
     async function resetSheet(sheetdbId) {
       if (!confirm("⚠️ Voulez-vous vraiment supprimer toutes les données ?")) return;
       showLoader(true);
       try {
         const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}/all`, { method: "DELETE" });
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        tableBody.innerHTML = "";
         statusDisplay.textContent = "🗑️ Données réinitialisées avec succès.";
       } catch (e) {
         console.error(e);
@@ -259,7 +198,7 @@
       }
     }
 
-    // 🧠 Gestion des événements
+    // Gestion événements
     form.addEventListener("submit", (e) => {
       e.preventDefault();
       const id = extractSheetDBId(sheetdbInput.value.trim());
@@ -276,11 +215,6 @@
       const id = extractSheetDBId(sheetdbInput.value.trim());
       if (id) resetSheet(id);
     });
-
-    if (sheetdbInput.value) {
-      const id = extractSheetDBId(sheetdbInput.value);
-      if (id) loadHistory(id);
-    }
   </script>
 </body>
 </html>
