@@ -3,16 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Système de Pointage</title>
+  <title>Système de Pointage Hybride</title>
   <style>
     body {
       font-family: 'Inter', sans-serif;
       text-align: center;
       padding: 20px;
       background-color: #f4f4f9;
-    }
-    h1 {
-      color: #333;
     }
     #punchForm {
       background: #fff;
@@ -22,7 +19,7 @@
       border-radius: 12px;
       box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
-    input, button {
+    input, button, select {
       padding: 10px;
       margin: 10px 0;
       width: 100%;
@@ -48,6 +45,9 @@
       font-size: 12px;
       color: #777;
     }
+    .danger {
+      background: #ff5252;
+    }
   </style>
 </head>
 <body>
@@ -55,22 +55,33 @@
   <h1>Pointage des Heures</h1>
 
   <form id="punchForm">
-    <input type="hidden" id="uuid">
+    <label for="dbSource">📦 Base de Données :</label>
+    <select id="dbSource">
+      <option value="apps">Google Sheet (Apps Script)</option>
+      <option value="sheetdb">SheetDB.io</option>
+    </select>
+
+    <input type="text" id="sheetdbId" placeholder="ID SheetDB (ex: ren8pqvx9agdt)">
     <input type="text" id="name" placeholder="Votre nom complet" required>
+
     <button type="submit" id="punchIn">Pointer Entrée</button>
     <button type="button" id="punchOut">Pointer Sortie</button>
-    <button type="button" id="resetData" style="background:#ff5252;">🗑️ Réinitialiser mes données</button>
+    <button type="button" id="resetData" class="danger">🗑️ Réinitialiser mes données</button>
   </form>
 
   <div id="status">Statut : En attente...</div>
   <p id="uuidInfo"></p>
 
   <script>
-    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz3FBKH-cxcIdFoMiPLwJ8eG7SCz8ChBkCzVhCmi_iyYcSIhrnRkNCX--UWMJiNmcCP/exec"; // 🔗 ton URL Apps Script ici
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbXXXXXXXXXXXX/exec"; // 🔗 ton Apps Script
     const uuid = localStorage.getItem("punch_uuid") || generateUUID();
-
-    document.getElementById("uuid").value = uuid;
     document.getElementById("uuidInfo").textContent = "UUID : " + uuid;
+
+    // Charger le mode et l’ID SheetDB précédents
+    const savedDb = localStorage.getItem("dbSource") || "apps";
+    const savedSheetDB = localStorage.getItem("sheetdbId") || "";
+    document.getElementById("dbSource").value = savedDb;
+    document.getElementById("sheetdbId").value = savedSheetDB;
 
     function generateUUID() {
       const id = 'web-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
@@ -78,38 +89,83 @@
       return id;
     }
 
-    async function sendData(data) {
-      const res = await fetch(SCRIPT_URL, {
-        method: "POST",
-        body: JSON.stringify(data),
-        headers: { "Content-Type": "application/json" }
-      });
-      return res.json();
+    function getDatabaseURL() {
+      const dbType = document.getElementById("dbSource").value;
+      localStorage.setItem("dbSource", dbType);
+
+      if (dbType === "sheetdb") {
+        const sheetdbId = document.getElementById("sheetdbId").value.trim();
+        if (!sheetdbId) {
+          alert("⚠️ Veuillez entrer l’ID SheetDB.");
+          throw new Error("SheetDB ID manquant");
+        }
+        localStorage.setItem("sheetdbId", sheetdbId);
+        return `https://sheetdb.io/api/v1/${sheetdbId}`;
+      }
+      return SCRIPT_URL;
+    }
+
+    async function sendData(data, method = "POST") {
+      const dbType = document.getElementById("dbSource").value;
+      const url = getDatabaseURL();
+
+      if (dbType === "sheetdb") {
+        if (data.action === "reset") {
+          // Suppression via SheetDB
+          return fetch(`${url}/UUID/${uuid}`, { method: "DELETE" });
+        } else {
+          return fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ data: [data] })
+          });
+        }
+      } else {
+        // Google Apps Script
+        return fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data)
+        });
+      }
     }
 
     document.getElementById("punchForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const name = document.getElementById("name").value;
+      const name = document.getElementById("name").value.trim();
       const data = { uuid, name, type: "PointageIN" };
       document.getElementById("status").textContent = "⏳ Enregistrement...";
-      const result = await sendData(data);
-      document.getElementById("status").textContent = result.success ? "✅ Entrée enregistrée" : "❌ " + result.error;
+      try {
+        const res = await sendData(data);
+        const result = await res.json();
+        document.getElementById("status").textContent = result.success ? "✅ Entrée enregistrée" : "✅ Enregistrement terminé (SheetDB)";
+      } catch (err) {
+        document.getElementById("status").textContent = "❌ " + err.message;
+      }
     });
 
     document.getElementById("punchOut").addEventListener("click", async () => {
-      const name = document.getElementById("name").value;
+      const name = document.getElementById("name").value.trim();
       const data = { uuid, name, type: "PointageOUT" };
       document.getElementById("status").textContent = "⏳ Enregistrement...";
-      const result = await sendData(data);
-      document.getElementById("status").textContent = result.success ? "✅ Sortie enregistrée" : "❌ " + result.error;
+      try {
+        const res = await sendData(data);
+        const result = await res.json();
+        document.getElementById("status").textContent = result.success ? "✅ Sortie enregistrée" : "✅ Enregistrement terminé (SheetDB)";
+      } catch (err) {
+        document.getElementById("status").textContent = "❌ " + err.message;
+      }
     });
 
     document.getElementById("resetData").addEventListener("click", async () => {
-      if (!confirm("⚠️ Voulez-vous supprimer vos données ?")) return;
-      const result = await sendData({ uuid, action: "reset" });
-      document.getElementById("status").textContent = result.success ? "🗑️ Données supprimées" : "❌ " + result.error;
+      if (!confirm("⚠️ Supprimer toutes vos données ?")) return;
+      try {
+        const res = await sendData({ uuid, action: "reset" });
+        document.getElementById("status").textContent = "🗑️ Données supprimées.";
+      } catch (err) {
+        document.getElementById("status").textContent = "❌ " + err.message;
+      }
     });
   </script>
-
 </body>
 </html>
