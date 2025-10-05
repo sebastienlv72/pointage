@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage SheetDB - Version Améliorée</title>
+<title>Pointage SheetDB - Version Corrigée</title>
 <style>
 body { font-family:'Inter',sans-serif; text-align:center; padding:20px; background:#f4f4f9; }
 #punchForm {background:#fff; max-width:350px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
@@ -67,8 +67,11 @@ async function postPunch(type) {
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
-    document.getElementById("status").textContent = "✅ " + type + " enregistrée";
+    if(res.ok){
+      document.getElementById("status").textContent = "✅ " + type + " enregistrée";
+    } else {
+      document.getElementById("status").textContent = "❌ Erreur HTTP "+res.status;
+    }
   } catch(err) {
     console.error(err);
     document.getElementById("status").textContent = "❌ Erreur : " + err.message;
@@ -78,15 +81,18 @@ async function postPunch(type) {
 async function resetUser() {
   if(!confirm("⚠️ Voulez-vous réinitialiser vos données ?")) return;
   try {
-    const url = getAPIUrl();
-    // PATCH SheetDB pour mettre active=false pour l'UUID
-    const res = await fetch(`${url}/UUID/${uuid}`, {
+    const sheetdbId = document.getElementById("sheetdbId").value.trim();
+    if(!sheetdbId) throw new Error("ID SheetDB manquant");
+    const url = `https://sheetdb.io/api/v1/${sheetdbId}/search?UUID=${uuid}`;
+
+    const res = await fetch(url, {
       method: "PATCH",
       headers: {"Content-Type":"application/json"},
       body: JSON.stringify({ data: [{ active: false }] })
     });
-    if(res.ok) {
-      document.getElementById("status").textContent = "🗑️ Données désactivées";
+
+    if(res.ok){
+      document.getElementById("status").textContent = "🗑️ Données désactivées pour cet utilisateur";
     } else {
       document.getElementById("status").textContent = "❌ Erreur PATCH (HTTP "+res.status+")";
     }
