@@ -3,34 +3,34 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage SheetDB</title>
+<title>Pointage + Temps de Travail</title>
 <style>
 body { font-family:'Inter',sans-serif; text-align:center; padding:20px; background:#f4f4f9; }
-#punchForm {background:#fff; max-width:350px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
+#formContainer {background:#fff; max-width:400px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
 input, button {padding:10px; margin:10px 0; width:100%; border-radius:8px; border:1px solid #ddd; font-size:16px;}
 button {cursor:pointer; background:#3b5bff; color:#fff; font-weight:600; border:none;}
 button:hover {background:#2a4ae3;}
-#status {margin-top:15px; font-weight:500;}
-#uuidInfo {font-size:12px; color:#777;}
+#status, #result {margin-top:15px; font-weight:500;}
 </style>
 </head>
 <body>
 
-<h1>Pointage des Heures</h1>
+<h1>Pointage & Temps de Travail</h1>
 
-<form id="punchForm">
-  <input type="text" id="sheetdbId" placeholder="ID SheetDB (ex: ren8pqvx9agdt)" required>
+<div id="formContainer">
+  <input type="text" id="sheetdbId" placeholder="ID SheetDB" required>
   <input type="text" id="name" placeholder="Votre nom complet" required>
-  <button type="submit" id="punchIn">Pointer Entrée</button>
-  <button type="button" id="punchOut">Pointer Sortie</button>
-</form>
+  <button id="punchIn">Pointer Entrée</button>
+  <button id="punchOut">Pointer Sortie</button>
+  <button id="calculate">Calculer temps de travail</button>
+  <button id="sendEmail">Envoyer par mail (PDF)</button>
+</div>
 
 <div id="status">Statut : En attente...</div>
-<p id="uuidInfo"></p>
+<div id="result"></div>
 
 <script>
 const uuid = localStorage.getItem("punch_uuid") || generateUUID();
-document.getElementById("uuidInfo").textContent = "UUID : " + uuid;
 
 function generateUUID() {
   const id = 'web-' + Date.now().toString(36) + Math.random().toString(36).substr(2,6);
@@ -46,43 +46,111 @@ function getAPIUrl() {
 
 async function postPunch(type) {
   const name = document.getElementById("name").value.trim();
-  if(!name) { alert("Veuillez entrer votre nom complet"); return; }
-  const url = getAPIUrl();
+  if(!name) { alert("Veuillez entrer votre nom"); return; }
+
   const payload = {
     data: [{
       UUID: uuid,
       NomComplet: name,
       TypeAction: type,
       Date: new Date().toLocaleDateString('fr-FR'),
-      Heure: new Date().toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'})
+      Heure: new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})
     }]
   };
+
   try {
     document.getElementById("status").textContent = "⏳ Enregistrement...";
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(payload)
+    const res = await fetch(getAPIUrl(),{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify(payload)
     });
-    if(res.ok){
-      document.getElementById("status").textContent = "✅ " + type + " enregistrée";
-    } else {
-      document.getElementById("status").textContent = "❌ Erreur HTTP "+res.status;
-    }
-  } catch(err) {
-    console.error(err);
-    document.getElementById("status").textContent = "❌ Erreur : " + err.message;
+    document.getElementById("status").textContent = res.ok ? `✅ ${type} enregistrée` : `❌ Erreur HTTP ${res.status}`;
+  } catch(err){
+    document.getElementById("status").textContent = "❌ Erreur : "+err.message;
   }
 }
 
-document.getElementById("punchForm").addEventListener("submit", (e) => {
-  e.preventDefault();
-  postPunch("PointageIN");
-});
+function parseTime(str){
+  const [h,m] = str.split(":").map(Number);
+  return h*60 + m;
+}
 
-document.getElementById("punchOut").addEventListener("click", () => {
-  postPunch("PointageOUT");
-});
+function formatDuration(totalMinutes){
+  const h = Math.floor(totalMinutes/60);
+  const m = totalMinutes%60;
+  return `${h}h ${m}m`;
+}
+
+async function calculateTime() {
+  const sheetdbId = document.getElementById("sheetdbId").value.trim();
+  const name = document.getElementById("name").value.trim();
+  const status = document.getElementById("status");
+  const result = document.getElementById("result");
+  status.textContent = "⏳ Calcul en cours...";
+  result.textContent = "";
+
+  try {
+    const url = `${getAPIUrl()}/search?UUID=${uuid}`;
+    const res = await fetch(url);
+    if(!res.ok) throw new Error("Erreur HTTP "+res.status);
+    const data = await res.json();
+    if(data.length===0){ status.textContent="❌ Aucun pointage trouvé"; return; }
+
+    // Trier par date+heure
+    data.sort((a,b)=>{
+      return new Date(a.Date + " " + a.Heure) - new Date(b.Date + " " + b.Heure);
+    });
+
+    // Calculer temps total
+    let total = 0, lastIN=null;
+    data.forEach(r=>{
+      if(r.TypeAction==="PointageIN") lastIN = r.Heure;
+      else if(r.TypeAction==="PointageOUT" && lastIN){
+        total += parseTime(r.Heure)-parseTime(lastIN);
+        lastIN=null;
+      }
+    });
+
+    status.textContent="✅ Temps total calculé :";
+    result.textContent=formatDuration(total);
+    return formatDuration(total);
+
+  } catch(err){
+    status.textContent="❌ Erreur : "+err.message;
+  }
+}
+
+async function sendPDF() {
+  const name = document.getElementById("name").value.trim();
+  const sheetdbId = document.getElementById("sheetdbId").value.trim();
+  if(!name || !sheetdbId){ alert("Remplissez tous les champs"); return; }
+
+  const totalTime = await calculateTime();
+  if(!totalTime) return;
+
+  const payload = {
+    name, uuid, totalTime, sheetdbId
+  };
+
+  const scriptUrl = "https://script.google.com/macros/s/AKfycbynD-WaB1Q1I2NkGGEL1Q33U7uFS-zYfMq4nYJDLDMVJLDL_hjKadtL2sWECGELqQNe/exec"; // Remplace par ton Apps Script
+  try {
+    const res = await fetch(scriptUrl,{
+      method:"POST",
+      body:JSON.stringify(payload),
+      headers:{"Content-Type":"application/json"}
+    });
+    const text = await res.text();
+    alert("✅ E-mail envoyé !\n"+text);
+  } catch(err){
+    alert("❌ Erreur envoi e-mail : "+err.message);
+  }
+}
+
+document.getElementById("punchIn").addEventListener("click", ()=>postPunch("PointageIN"));
+document.getElementById("punchOut").addEventListener("click", ()=>postPunch("PointageOUT"));
+document.getElementById("calculate").addEventListener("click", calculateTime);
+document.getElementById("sendEmail").addEventListener("click", sendPDF);
 </script>
 
 </body>
