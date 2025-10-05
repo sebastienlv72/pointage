@@ -1,236 +1,115 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>🕐 Pointage SheetDB - Version Pro</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Système de Pointage</title>
   <style>
     body {
-      font-family: "Inter", sans-serif;
-      background: #f5f7fb;
-      margin: 0;
-      padding: 25px;
+      font-family: 'Inter', sans-serif;
       text-align: center;
+      padding: 20px;
+      background-color: #f4f4f9;
     }
     h1 {
-      color: #1d3557;
-      margin-bottom: 20px;
+      color: #333;
     }
-    form {
+    #punchForm {
       background: #fff;
-      max-width: 420px;
-      margin: 0 auto;
+      max-width: 350px;
+      margin: 20px auto;
       padding: 25px;
-      border-radius: 16px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.1);
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.1);
     }
     input, button {
+      padding: 10px;
+      margin: 10px 0;
       width: 100%;
-      padding: 12px;
-      font-size: 16px;
-      margin-bottom: 12px;
-      border: 1px solid #ccc;
       border-radius: 8px;
-      box-sizing: border-box;
+      border: 1px solid #ddd;
+      font-size: 16px;
     }
     button {
       cursor: pointer;
+      background: #3b5bff;
+      color: #fff;
+      font-weight: 600;
       border: none;
-      font-weight: bold;
-      color: white;
-      background: #375aff;
-      transition: 0.2s;
     }
-    button:hover:not(:disabled) { background: #003bff; }
-    button:disabled { background: #c0d1ff; cursor: not-allowed; }
-    #resetBtn { background: #e63946; }
-    #resetBtn:hover { background: #b71c1c; }
-
-    /* Loader */
-    #loader {
-      display: none;
-      margin: 20px auto;
+    button:hover {
+      background: #2a4ae3;
     }
-    .spinner {
-      width: 36px; height: 36px;
-      border: 4px solid #ddd;
-      border-top: 4px solid #375aff;
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-      margin: 0 auto;
-    }
-    @keyframes spin {
-      0% { transform: rotate(0deg); }
-      100% { transform: rotate(360deg); }
-    }
-
-    /* Toast notifications */
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #4caf50;
-      color: white;
-      padding: 12px 20px;
-      border-radius: 12px;
-      box-shadow: 0 4px 14px rgba(0,0,0,0.2);
-      opacity: 0;
-      transition: opacity 0.3s ease;
-      z-index: 9999;
-      font-weight: 500;
-    }
-    .toast.error { background: #e63946; }
-    .toast.show { opacity: 1; }
-
     #status {
       margin-top: 15px;
       font-weight: 500;
-      color: #444;
+    }
+    #uuidInfo {
+      font-size: 12px;
+      color: #777;
     }
   </style>
 </head>
 <body>
 
-  <h1>🕐 Feuille de Pointage</h1>
+  <h1>Pointage des Heures</h1>
 
   <form id="punchForm">
-    <input type="text" id="sheetdbId" placeholder="ID SheetDB ou URL complète" required />
-    <input type="text" id="name" placeholder="Nom complet" required />
-    <button type="submit" id="punchBtn">Pointer</button>
-    <button type="button" id="resetBtn">Réinitialiser mon historique</button>
+    <input type="hidden" id="uuid">
+    <input type="text" id="name" placeholder="Votre nom complet" required>
+    <button type="submit" id="punchIn">Pointer Entrée</button>
+    <button type="button" id="punchOut">Pointer Sortie</button>
+    <button type="button" id="resetData" style="background:#ff5252;">🗑️ Réinitialiser mes données</button>
   </form>
 
-  <div id="loader"><div class="spinner"></div><p>Chargement...</p></div>
-  <p id="status">Statut : en attente...</p>
-
-  <div id="toast" class="toast"></div>
+  <div id="status">Statut : En attente...</div>
+  <p id="uuidInfo"></p>
 
   <script>
-    const form = document.getElementById("punchForm");
-    const punchBtn = document.getElementById("punchBtn");
-    const resetBtn = document.getElementById("resetBtn");
-    const statusDisplay = document.getElementById("status");
-    const loader = document.getElementById("loader");
-    const sheetdbInput = document.getElementById("sheetdbId");
-    const toast = document.getElementById("toast");
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz3FBKH-cxcIdFoMiPLwJ8eG7SCz8ChBkCzVhCmi_iyYcSIhrnRkNCX--UWMJiNmcCP/exec"; // 🔗 ton URL Apps Script ici
+    const uuid = localStorage.getItem("punch_uuid") || generateUUID();
 
-    // UUID unique par utilisateur
-    let userUUID = localStorage.getItem("uuid") || "uuid-" + Math.random().toString(36).substring(2, 9);
-    localStorage.setItem("uuid", userUUID);
+    document.getElementById("uuid").value = uuid;
+    document.getElementById("uuidInfo").textContent = "UUID : " + uuid;
 
-    if (localStorage.getItem("sheetdb_id")) {
-      sheetdbInput.value = localStorage.getItem("sheetdb_id");
+    function generateUUID() {
+      const id = 'web-' + Date.now().toString(36) + Math.random().toString(36).substr(2, 6);
+      localStorage.setItem("punch_uuid", id);
+      return id;
     }
 
-    function extractSheetDBId(input) {
-      const match = input.match(/([a-z0-9]{10,})$/i);
-      return match ? match[1] : null;
+    async function sendData(data) {
+      const res = await fetch(SCRIPT_URL, {
+        method: "POST",
+        body: JSON.stringify(data),
+        headers: { "Content-Type": "application/json" }
+      });
+      return res.json();
     }
 
-    function showLoader(show) {
-      loader.style.display = show ? "block" : "none";
-    }
-
-    // Affichage d'une notification visuelle
-    function showToast(message, isError = false) {
-      toast.textContent = message;
-      toast.className = "toast" + (isError ? " error" : "");
-      toast.classList.add("show");
-      setTimeout(() => toast.classList.remove("show"), 3000);
-    }
-
-    // Détermine la prochaine action (Entrée / Sortie)
-    async function getNextAction(sheetdbId) {
-      try {
-        const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}/search?UUID=${userUUID}&sort_by=Heure&sort_order=desc&limit=1`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-        const last = data[0]?.TypeAction || null;
-        return last === "PointageIN" ? "PointageOUT" : "PointageIN";
-      } catch {
-        return "PointageIN";
-      }
-    }
-
-    // Enregistrement du pointage
-    async function addPunch(sheetdbId, name) {
-      const action = await getNextAction(sheetdbId);
-      const now = new Date();
-      const heure = now.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
-      const date = now.toLocaleDateString("fr-FR");
-
-      const payload = {
-        data: [{
-          UUID: userUUID,
-          NomComplet: name,
-          TypeAction: action,
-          Heure: heure,
-          Date: date
-        }]
-      };
-
-      punchBtn.disabled = true;
-      punchBtn.textContent = "⏳ Envoi...";
-      showLoader(true);
-
-      try {
-        const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        statusDisplay.textContent = `✅ ${name} a pointé ${action === "PointageIN" ? "Entrée" : "Sortie"} à ${heure}`;
-        showToast(`✅ ${name} : ${action === "PointageIN" ? "Entrée" : "Sortie"} enregistrée !`);
-      } catch (e) {
-        console.error(e);
-        statusDisplay.textContent = "❌ Erreur d’enregistrement : " + e.message;
-        showToast("❌ Erreur d’enregistrement", true);
-      } finally {
-        punchBtn.disabled = false;
-        punchBtn.textContent = "Pointer";
-        showLoader(false);
-      }
-    }
-
-    // Réinitialise uniquement l'utilisateur courant
-    async function resetUser(sheetdbId) {
-      if (!confirm("⚠️ Supprimer uniquement vos données ?")) return;
-      showLoader(true);
-      try {
-        const url = `https://sheetdb.io/api/v1/${sheetdbId}/search?UUID=${userUUID}`;
-        const res = await fetch(url, { method: "DELETE" });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        statusDisplay.textContent = "🗑️ Vos données ont été supprimées avec succès.";
-        showToast("🗑️ Données supprimées avec succès !");
-      } catch (e) {
-        console.error("Erreur suppression :", e);
-        statusDisplay.textContent = "❌ Erreur de suppression : " + e.message;
-        showToast("❌ Erreur de suppression", true);
-      } finally {
-        showLoader(false);
-      }
-    }
-
-    // Événements
-    form.addEventListener("submit", (e) => {
+    document.getElementById("punchForm").addEventListener("submit", async (e) => {
       e.preventDefault();
-      const id = extractSheetDBId(sheetdbInput.value.trim());
-      const name = document.getElementById("name").value.trim();
-      if (!id || !name) {
-        statusDisplay.textContent = "⚠️ Remplissez tous les champs.";
-        showToast("⚠️ Remplissez tous les champs", true);
-        return;
-      }
-      localStorage.setItem("sheetdb_id", id);
-      addPunch(id, name);
+      const name = document.getElementById("name").value;
+      const data = { uuid, name, type: "PointageIN" };
+      document.getElementById("status").textContent = "⏳ Enregistrement...";
+      const result = await sendData(data);
+      document.getElementById("status").textContent = result.success ? "✅ Entrée enregistrée" : "❌ " + result.error;
     });
 
-    resetBtn.addEventListener("click", () => {
-      const id = extractSheetDBId(sheetdbInput.value.trim());
-      if (id) resetUser(id);
+    document.getElementById("punchOut").addEventListener("click", async () => {
+      const name = document.getElementById("name").value;
+      const data = { uuid, name, type: "PointageOUT" };
+      document.getElementById("status").textContent = "⏳ Enregistrement...";
+      const result = await sendData(data);
+      document.getElementById("status").textContent = result.success ? "✅ Sortie enregistrée" : "❌ " + result.error;
+    });
+
+    document.getElementById("resetData").addEventListener("click", async () => {
+      if (!confirm("⚠️ Voulez-vous supprimer vos données ?")) return;
+      const result = await sendData({ uuid, action: "reset" });
+      document.getElementById("status").textContent = result.success ? "🗑️ Données supprimées" : "❌ " + result.error;
     });
   </script>
+
 </body>
 </html>
