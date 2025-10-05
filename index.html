@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage & Temps de Travail</title>
+<title>Pointage & Temps de Travail (Airtable)</title>
 <style>
 body { font-family:'Inter',sans-serif; text-align:center; padding:20px; background:#f4f4f9; }
 #formContainer {background:#fff; max-width:400px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
@@ -15,10 +15,12 @@ button:hover {background:#2a4ae3;}
 </head>
 <body>
 
-<h1>Pointage & Temps de Travail</h1>
+<h1>Pointage & Temps de Travail (Airtable)</h1>
 
 <div id="formContainer">
-  <input type="text" id="sheetdbId" placeholder="ID SheetDB" required>
+  <input type="text" id="airtableApiKey" placeholder="Clé API Airtable" required>
+  <input type="text" id="airtableBaseId" placeholder="ID Base Airtable" required>
+  <input type="text" id="tableName" placeholder="Nom de la table" required>
   <input type="text" id="name" placeholder="Votre nom complet" required>
   <button id="punchIn">Pointer Entrée</button>
   <button id="punchOut">Pointer Sortie</button>
@@ -29,7 +31,6 @@ button:hover {background:#2a4ae3;}
 <div id="status">Statut : En attente...</div>
 <div id="result"></div>
 
-<!-- jsPDF depuis CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
 const uuid = localStorage.getItem("punch_uuid") || generateUUID();
@@ -41,32 +42,37 @@ function generateUUID() {
   return id;
 }
 
-function getAPIUrl() {
-  const sheetdbId = document.getElementById("sheetdbId").value.trim();
-  if(!sheetdbId) throw new Error("ID SheetDB manquant");
-  return `https://sheetdb.io/api/v1/${sheetdbId}`;
+function getAirtableUrl() {
+  const baseId = document.getElementById("airtableBaseId").value.trim();
+  const tableName = document.getElementById("tableName").value.trim();
+  if(!baseId || !tableName) throw new Error("Base ID ou nom de table manquant");
+  return `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`;
 }
 
 async function postPunch(type) {
+  const apiKey = document.getElementById("airtableApiKey").value.trim();
   const name = document.getElementById("name").value.trim();
-  if(!name) { alert("Veuillez entrer votre nom"); return; }
+  if(!apiKey || !name) { alert("Remplissez tous les champs"); return; }
 
   const payload = {
-    data: [{
+    fields: {
       UUID: uuid,
       NomComplet: name,
       TypeAction: type,
       Date: new Date().toLocaleDateString('fr-FR'),
       Heure: new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})
-    }]
+    }
   };
 
   try {
     document.getElementById("status").textContent = "⏳ Enregistrement...";
-    const res = await fetch(getAPIUrl(),{
+    const res = await fetch(getAirtableUrl(),{
       method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify(payload)
+      headers:{
+        "Authorization": `Bearer ${apiKey}`,
+        "Content-Type":"application/json"
+      },
+      body: JSON.stringify(payload)
     });
     document.getElementById("status").textContent = res.ok ? `✅ ${type} enregistrée` : `❌ Erreur HTTP ${res.status}`;
   } catch(err){
@@ -91,20 +97,24 @@ async function calculateTime() {
   status.textContent = "⏳ Calcul en cours...";
   result.textContent = "";
 
-  try {
-    const url = `${getAPIUrl()}/search?UUID=${uuid}`;
-    const res = await fetch(url);
-    if(!res.ok) throw new Error("Erreur HTTP "+res.status);
-    const data = await res.json();
-    if(data.length===0){ status.textContent="❌ Aucun pointage trouvé"; return null; }
+  const apiKey = document.getElementById("airtableApiKey").value.trim();
+  if(!apiKey){ status.textContent="❌ Clé API manquante"; return; }
 
-    data.sort((a,b)=>new Date(a.Date + " " + a.Heure) - new Date(b.Date + " " + b.Heure));
+  try {
+    const url = getAirtableUrl() + `?filterByFormula={UUID}='${uuid}'&sort[0][field]=Date&sort[0][direction]=asc`;
+    const res = await fetch(url, {
+      headers: { "Authorization": `Bearer ${apiKey}` }
+    });
+    if(!res.ok) throw new Error("Erreur HTTP "+res.status);
+    const data = (await res.json()).records;
+    if(data.length===0){ status.textContent="❌ Aucun pointage trouvé"; return null; }
 
     let total = 0, lastIN=null;
     data.forEach(r=>{
-      if(r.TypeAction==="PointageIN") lastIN = r.Heure;
-      else if(r.TypeAction==="PointageOUT" && lastIN){
-        total += parseTime(r.Heure)-parseTime(lastIN);
+      const fields = r.fields;
+      if(fields.TypeAction==="PointageIN") lastIN = fields.Heure;
+      else if(fields.TypeAction==="PointageOUT" && lastIN){
+        total += parseTime(fields.Heure)-parseTime(lastIN);
         lastIN=null;
       }
     });
@@ -122,16 +132,13 @@ async function calculateTime() {
 
 function generatePDF() {
   if(!totalWorkTime) { alert("Calculer le temps de travail d'abord"); return; }
-
   const name = document.getElementById("name").value.trim();
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF();
-
   doc.text(`Rapport de pointage`, 10, 20);
   doc.text(`Nom: ${name}`, 10, 30);
   doc.text(`UUID: ${uuid}`, 10, 40);
   doc.text(`Temps total travaillé: ${totalWorkTime}`, 10, 50);
-
   doc.save(`Pointage_${name}.pdf`);
 }
 
