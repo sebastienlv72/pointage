@@ -18,7 +18,7 @@ button:hover {background:#2a4ae3;}
 <h1>Pointage & Temps de Travail (Airtable)</h1>
 
 <div id="formContainer">
-  <input type="text" id="airtableApiKey" placeholder="Clé API Airtable" required>
+  <input type="text" id="airtableToken" placeholder="Personal Access Token Airtable" required>
   <input type="text" id="airtableBaseId" placeholder="ID Base Airtable" required>
   <input type="text" id="tableName" placeholder="Nom de la table" required>
   <input type="text" id="name" placeholder="Votre nom complet" required>
@@ -50,9 +50,9 @@ function getAirtableUrl() {
 }
 
 async function postPunch(type) {
-  const apiKey = document.getElementById("airtableApiKey").value.trim();
+  const token = document.getElementById("airtableToken").value.trim();
   const name = document.getElementById("name").value.trim();
-  if(!apiKey || !name) { alert("Remplissez tous les champs"); return; }
+  if(!token || !name) { alert("Remplissez tous les champs"); return; }
 
   const payload = {
     fields: {
@@ -69,7 +69,7 @@ async function postPunch(type) {
     const res = await fetch(getAirtableUrl(),{
       method:"POST",
       headers:{
-        "Authorization": `Bearer ${apiKey}`,
+        "Authorization": `Bearer ${token}`,
         "Content-Type":"application/json"
       },
       body: JSON.stringify(payload)
@@ -97,13 +97,13 @@ async function calculateTime() {
   status.textContent = "⏳ Calcul en cours...";
   result.textContent = "";
 
-  const apiKey = document.getElementById("airtableApiKey").value.trim();
-  if(!apiKey){ status.textContent="❌ Clé API manquante"; return; }
+  const token = document.getElementById("airtableToken").value.trim();
+  if(!token){ status.textContent="❌ Token manquant"; return; }
 
   try {
     const url = getAirtableUrl() + `?filterByFormula={UUID}='${uuid}'&sort[0][field]=Date&sort[0][direction]=asc`;
     const res = await fetch(url, {
-      headers: { "Authorization": `Bearer ${apiKey}` }
+      headers: { "Authorization": `Bearer ${token}` }
     });
     if(!res.ok) throw new Error("Erreur HTTP "+res.status);
     const data = (await res.json()).records;
