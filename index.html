@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pointage avec UUID - SheetDB</title>
+  <title>Pointage UUID - SheetDB</title>
   <style>
     body { font-family: sans-serif; text-align: center; background: #f4f4f9; padding: 20px; }
     form { max-width: 400px; margin: 20px auto; background: #fff; padding: 20px; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
@@ -23,10 +23,10 @@
 <h1>📋 Pointage des Heures</h1>
 
 <form id="punchForm">
-  <input type="text" id="sheetdbId" placeholder="ID SheetDB (ex: ren8pqvx9agdt)" required>
+  <input type="text" id="sheetdbId" placeholder="ID SheetDB ou URL complète" required>
   <input type="text" id="name" placeholder="Nom complet" required>
   <button type="submit" id="punchBtn">Pointer</button>
-  <button type="button" id="resetBtn">Réinitialiser toutes les données</button>
+  <button type="button" id="resetBtn">Réinitialiser</button>
 </form>
 
 <p id="status">Statut : en attente...</p>
@@ -58,9 +58,15 @@ let userUUID = localStorage.getItem("uuid") || ("uuid-" + Math.random().toString
 localStorage.setItem("uuid", userUUID);
 
 // Charger l'ID SheetDB précédent
-if(localStorage.getItem("sheetdb_id")) sheetdbInput.value = localStorage.getItem("sheetdb_id");
+if (localStorage.getItem("sheetdb_id")) sheetdbInput.value = localStorage.getItem("sheetdb_id");
 
-// --- Historique ---
+// 🧠 Fonction pour extraire l'ID SheetDB même si l'utilisateur colle une URL complète
+function extractSheetDBId(input) {
+  const match = input.match(/([a-z0-9]{12,})$/i);
+  return match ? match[1] : null;
+}
+
+// --- Charger historique ---
 async function loadHistory(sheetdbId){
   try {
     const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}?sort_by=Heure&sort_order=desc`);
@@ -68,7 +74,7 @@ async function loadHistory(sheetdbId){
     const data = await res.json();
     tableBody.innerHTML = "";
     if(!Array.isArray(data) || data.length === 0){
-      statusDisplay.textContent = "ℹ️ Aucune donnée pour le moment.";
+      statusDisplay.textContent = "ℹ️ Aucune donnée.";
       return;
     }
     data.forEach(entry => {
@@ -79,7 +85,7 @@ async function loadHistory(sheetdbId){
     statusDisplay.textContent = "✅ Historique chargé.";
   } catch(e){
     console.error(e);
-    statusDisplay.textContent = "❌ Erreur de chargement des données.";
+    statusDisplay.textContent = "❌ Erreur de chargement : " + e.message;
   }
 }
 
@@ -124,7 +130,7 @@ async function addPunch(sheetdbId, name){
     await loadHistory(sheetdbId);
   } catch(e){
     console.error(e);
-    statusDisplay.textContent = "❌ Erreur lors de l'enregistrement.";
+    statusDisplay.textContent = "❌ Erreur lors de l'enregistrement : " + e.message;
   } finally{
     punchBtn.disabled = false;
     punchBtn.textContent = "Pointer";
@@ -138,30 +144,36 @@ async function resetSheet(sheetdbId){
     const res = await fetch(`https://sheetdb.io/api/v1/${sheetdbId}/all`, { method:"DELETE" });
     if(!res.ok) throw new Error(`HTTP ${res.status}`);
     tableBody.innerHTML = "";
-    statusDisplay.textContent = "🗑️ Toutes les données ont été supprimées.";
+    statusDisplay.textContent = "🗑️ Données supprimées avec succès.";
   } catch(e){
     console.error(e);
-    statusDisplay.textContent = "❌ Erreur lors de la réinitialisation.";
+    statusDisplay.textContent = "❌ Erreur réinitialisation : " + e.message;
   }
 }
 
 // --- Événements ---
 punchForm.addEventListener("submit", e=>{
   e.preventDefault();
-  const sheetdbId = sheetdbInput.value.trim();
+  let sheetdbId = extractSheetDBId(sheetdbInput.value.trim());
   const name = nameInput.value.trim();
-  if(!sheetdbId || !name){ statusDisplay.textContent="⚠️ Remplir tous les champs."; return;}
+  if(!sheetdbId || !name){
+    statusDisplay.textContent="⚠️ Remplir correctement tous les champs.";
+    return;
+  }
   localStorage.setItem("sheetdb_id", sheetdbId);
   addPunch(sheetdbId, name);
 });
 
 resetBtn.addEventListener("click", ()=>{
-  const sheetdbId = sheetdbInput.value.trim();
+  let sheetdbId = extractSheetDBId(sheetdbInput.value.trim());
   if(sheetdbId) resetSheet(sheetdbId);
 });
 
-// Chargement initial
-if(sheetdbInput.value) loadHistory(sheetdbInput.value);
+// Chargement initial si ID déjà présent
+if(sheetdbInput.value) {
+  const id = extractSheetDBId(sheetdbInput.value);
+  if (id) loadHistory(id);
+}
 </script>
 
 </body>
