@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage Airtable avec Temps de Travail</title>
+<title>Pointage Airtable avec employés dynamiques</title>
 <style>
 body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; }
 h1 { color: #333; margin-bottom: 20px; }
@@ -46,10 +46,11 @@ button:hover { background-color: #003bff; }
 
 <script>
 const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; // Remplace par ton Base ID
-const AIRTABLE_TOKEN = "patavl975YpJzd6UH.d106d07e8007f6442f9ac3e5145885caec0ac8bab931554baca3587de4d7ed22";    // Remplace par ton Token Airtable
-const AIRTABLE_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
+const AIRTABLE_TOKEN = "patavl975YpJzd6UH.31f4005eb6a6e80709a90ff77bae7376663a496a47b5bfb818b2b8e2a94f8f8b";    // Remplace par ton Token Airtable
+const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/employes`;
+const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/pointages`;
 
-// Générer UUID simple
+// Générer UUID
 function generateUUID() {
     return 'xxxxxx-xxxx-4xxx-yxxx-xxxxxx'.replace(/[xy]/g, function(c) {
         const r = Math.random() * 16 | 0;
@@ -58,15 +59,13 @@ function generateUUID() {
     });
 }
 
-// Charger les employés pour la liste déroulante
+// Charger la liste des employés depuis Airtable
 async function loadEmployees() {
     try {
-        const res = await fetch(`${AIRTABLE_URL}/employes`, {
-            headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-        });
+        const res = await fetch(EMPLOYES_URL, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
         const data = await res.json();
         const select = document.getElementById('employeeSelect');
-        select.innerHTML = "";
+        select.innerHTML = '';
         data.records.forEach(emp => {
             const option = document.createElement('option');
             option.value = emp.fields.NomTable;
@@ -80,23 +79,20 @@ async function loadEmployees() {
     }
 }
 
-// Ajouter un employé
+// Ajouter un nouvel employé dans Airtable
 async function addEmployee() {
     const newEmp = document.getElementById('newEmployee').value.trim();
     if(!newEmp) { alert("Entrez un nom"); return; }
     const nomTable = newEmp.toLowerCase().replace(/\s+/g,'');
     try {
-        await fetch(`${AIRTABLE_URL}/employes`, {
+        await fetch(EMPLOYES_URL, {
             method: "POST",
             headers: {
                 Authorization: `Bearer ${AIRTABLE_TOKEN}`,
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({
-                records: [{ fields: { NomTable: nomTable, NomAffiche: newEmp, UUID: generateUUID() } }]
-            })
+            body: JSON.stringify({ records: [{ fields: { NomTable: nomTable, NomAffiche: newEmp, UUID: generateUUID() } }] })
         });
-        alert(`${newEmp} ajouté`);
         document.getElementById('newEmployee').value = "";
         loadEmployees();
     } catch (e) {
@@ -114,17 +110,12 @@ async function punch(typeAction) {
     const date = now.toLocaleDateString('fr-FR');
     const uuid = generateUUID();
     try {
-        await fetch(`${AIRTABLE_URL}/pointages`, {
+        await fetch(POINTAGES_URL, {
             method: "POST",
-            headers: {
-                Authorization: `Bearer ${AIRTABLE_TOKEN}`,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                records: [{ fields: { NomComplet: emp, TypeAction: typeAction, Heure: heure, Date: date, UUID: uuid } }]
-            })
+            headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ records: [{ fields: { NomComplet: emp, TypeAction: typeAction, Heure: heure, Date: date, UUID: uuid } }] })
         });
-        document.getElementById('status').innerText = `✅ ${emp} a pointé ${typeAction} à ${heure} (UUID: ${uuid})`;
+        document.getElementById('status').innerText = `✅ ${emp} a pointé ${typeAction} à ${heure}`;
         loadPointages();
     } catch (e) {
         console.error(e);
@@ -137,7 +128,7 @@ async function loadPointages() {
     const emp = document.getElementById('employeeSelect').value;
     if(!emp) return;
     try {
-        const res = await fetch(`${AIRTABLE_URL}/pointages?filterByFormula={NomComplet}='${emp}'&sort[0][field]=Date&sort[0][direction]=asc`, {
+        const res = await fetch(`${POINTAGES_URL}?filterByFormula={NomComplet}='${emp}'&sort[0][field]=Date&sort[0][direction]=asc`, {
             headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
         });
         const data = await res.json();
@@ -149,7 +140,6 @@ async function loadPointages() {
             return;
         }
 
-        // Afficher pointages
         data.records.forEach(rec => {
             const div = document.createElement('div');
             div.className = "pointage-item";
@@ -158,16 +148,14 @@ async function loadPointages() {
             container.appendChild(div);
         });
 
-        // Calculer temps total
+        // Calcul temps total
         let totalMinutes = 0;
         let lastIn = null;
         data.records.forEach(rec => {
-            const timeParts = rec.fields.Heure.split(":");
-            if(rec.fields.TypeAction === "IN") {
-                lastIn = parseInt(timeParts[0])*60 + parseInt(timeParts[1]);
-            } else if(rec.fields.TypeAction === "OUT" && lastIn !== null) {
-                const outMinutes = parseInt(timeParts[0])*60 + parseInt(timeParts[1]);
-                totalMinutes += outMinutes - lastIn;
+            const [h, m] = rec.fields.Heure.split(":").map(Number);
+            if(rec.fields.TypeAction === "IN") lastIn = h*60 + m;
+            else if(rec.fields.TypeAction === "OUT" && lastIn !== null) {
+                totalMinutes += h*60 + m - lastIn;
                 lastIn = null;
             }
         });
@@ -185,10 +173,7 @@ async function loadPointages() {
 async function deletePointage(recordId) {
     if(!confirm("Confirmez la suppression de ce pointage ?")) return;
     try {
-        await fetch(`${AIRTABLE_URL}/pointages/${recordId}`, {
-            method: "DELETE",
-            headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-        });
+        await fetch(`${POINTAGES_URL}/${recordId}`, { method: "DELETE", headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
         loadPointages();
     } catch(e) {
         console.error(e);
