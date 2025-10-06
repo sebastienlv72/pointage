@@ -3,150 +3,201 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage & Temps de Travail (Airtable)</title>
+<title>Pointage Airtable avec Temps de Travail</title>
 <style>
-body { font-family:'Inter',sans-serif; text-align:center; padding:20px; background:#f4f4f9; }
-#formContainer {background:#fff; max-width:400px; margin:20px auto; padding:25px; border-radius:12px; box-shadow:0 4px 10px rgba(0,0,0,0.1);}
-input, button {padding:10px; margin:10px 0; width:100%; border-radius:8px; border:1px solid #ddd; font-size:16px;}
-button {cursor:pointer; background:#3b5bff; color:#fff; font-weight:600; border:none;}
-button:hover {background:#2a4ae3;}
-#status, #result {margin-top:15px; font-weight:500;}
+body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; }
+h1 { color: #333; margin-bottom: 20px; }
+select, input, button { padding: 10px; margin: 10px 0; font-size: 16px; border-radius: 6px; }
+button { cursor: pointer; background-color: #375aff; color: white; border: none; }
+button:hover { background-color: #003bff; }
+#status { margin-top: 15px; color: #555; font-weight: bold; }
+.pointage-item { margin: 5px 0; }
+.pointage-item button { background-color: #ff4d4d; margin-left: 10px; }
+.pointage-item button:hover { background-color: #cc0000; }
 </style>
 </head>
 <body>
 
-<h1>Pointage & Temps de Travail (Airtable)</h1>
+<h1>Pointage des employés</h1>
 
-<div id="formContainer">
-  <input type="text" id="airtableToken" placeholder="Personal Access Token Airtable" required>
-  <input type="text" id="airtableBaseId" placeholder="ID Base Airtable" required>
-  <input type="text" id="tableName" placeholder="Nom de la table" required>
-  <input type="text" id="name" placeholder="Votre nom complet" required>
-  <button id="punchIn">Pointer Entrée</button>
-  <button id="punchOut">Pointer Sortie</button>
-  <button id="calculate">Calculer temps de travail</button>
-  <button id="generatePDF">Télécharger PDF</button>
+<div>
+    <label>Choisir un employé :</label><br>
+    <select id="employeeSelect" onchange="loadPointages()">
+        <option value="">Chargement...</option>
+    </select>
 </div>
 
-<div id="status">Statut : En attente...</div>
-<div id="result"></div>
+<div>
+    <input type="text" id="newEmployee" placeholder="Ajouter nouvel employé">
+    <button onclick="addEmployee()">Ajouter</button>
+</div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<div>
+    <button onclick="punch('IN')">Pointer Entrée</button>
+    <button onclick="punch('OUT')">Pointer Sortie</button>
+</div>
+
+<h3>Historique des pointages :</h3>
+<div id="pointages"></div>
+
+<h3>Temps total travaillé : <span id="totalTime">0h 0m</span></h3>
+
+<p id="status">Statut : prêt</p>
+
 <script>
-const uuid = localStorage.getItem("punch_uuid") || generateUUID();
-let totalWorkTime = null;
+const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; // Remplace par ton Base ID
+const AIRTABLE_TOKEN = "patavl975YpJzd6UH.d106d07e8007f6442f9ac3e5145885caec0ac8bab931554baca3587de4d7ed22";    // Remplace par ton Token Airtable
+const AIRTABLE_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}`;
 
+// Générer UUID simple
 function generateUUID() {
-  const id = 'web-' + Date.now().toString(36) + Math.random().toString(36).substr(2,6);
-  localStorage.setItem("punch_uuid", id);
-  return id;
+    return 'xxxxxx-xxxx-4xxx-yxxx-xxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+    });
 }
 
-function getAirtableUrl() {
-  const baseId = document.getElementById("airtableBaseId").value.trim();
-  const tableName = document.getElementById("tableName").value.trim();
-  if(!baseId || !tableName) throw new Error("Base ID ou nom de table manquant");
-  return `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`;
-}
-
-async function postPunch(type) {
-  const token = document.getElementById("airtableToken").value.trim();
-  const name = document.getElementById("name").value.trim();
-  if(!token || !name) { alert("Remplissez tous les champs"); return; }
-
-  const payload = {
-    fields: {
-      UUID: uuid,
-      NomComplet: name,
-      TypeAction: type,
-      Date: new Date().toLocaleDateString('fr-FR'),
-      Heure: new Date().toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})
+// Charger les employés pour la liste déroulante
+async function loadEmployees() {
+    try {
+        const res = await fetch(`${AIRTABLE_URL}/employes`, {
+            headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+        });
+        const data = await res.json();
+        const select = document.getElementById('employeeSelect');
+        select.innerHTML = "";
+        data.records.forEach(emp => {
+            const option = document.createElement('option');
+            option.value = emp.fields.NomTable;
+            option.text = emp.fields.NomAffiche;
+            select.appendChild(option);
+        });
+        loadPointages();
+    } catch(e) {
+        console.error(e);
+        alert("Erreur chargement employés");
     }
-  };
-
-  try {
-    document.getElementById("status").textContent = "⏳ Enregistrement...";
-    const res = await fetch(getAirtableUrl(),{
-      method:"POST",
-      headers:{
-        "Authorization": `Bearer ${token}`,
-        "Content-Type":"application/json"
-      },
-      body: JSON.stringify(payload)
-    });
-    document.getElementById("status").textContent = res.ok ? `✅ ${type} enregistrée` : `❌ Erreur HTTP ${res.status}`;
-  } catch(err){
-    document.getElementById("status").textContent = "❌ Erreur : "+err.message;
-  }
 }
 
-function parseTime(str){
-  const [h,m] = str.split(":").map(Number);
-  return h*60 + m;
+// Ajouter un employé
+async function addEmployee() {
+    const newEmp = document.getElementById('newEmployee').value.trim();
+    if(!newEmp) { alert("Entrez un nom"); return; }
+    const nomTable = newEmp.toLowerCase().replace(/\s+/g,'');
+    try {
+        await fetch(`${AIRTABLE_URL}/employes`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${AIRTABLE_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                records: [{ fields: { NomTable: nomTable, NomAffiche: newEmp, UUID: generateUUID() } }]
+            })
+        });
+        alert(`${newEmp} ajouté`);
+        document.getElementById('newEmployee').value = "";
+        loadEmployees();
+    } catch (e) {
+        console.error(e);
+        alert("Erreur ajout employé");
+    }
 }
 
-function formatDuration(totalMinutes){
-  const h = Math.floor(totalMinutes/60);
-  const m = totalMinutes%60;
-  return `${h}h ${m}m`;
+// Pointer entrée ou sortie
+async function punch(typeAction) {
+    const emp = document.getElementById('employeeSelect').value;
+    if(!emp) { alert("Choisissez un employé"); return; }
+    const now = new Date();
+    const heure = now.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
+    const date = now.toLocaleDateString('fr-FR');
+    const uuid = generateUUID();
+    try {
+        await fetch(`${AIRTABLE_URL}/pointages`, {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${AIRTABLE_TOKEN}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                records: [{ fields: { NomComplet: emp, TypeAction: typeAction, Heure: heure, Date: date, UUID: uuid } }]
+            })
+        });
+        document.getElementById('status').innerText = `✅ ${emp} a pointé ${typeAction} à ${heure} (UUID: ${uuid})`;
+        loadPointages();
+    } catch (e) {
+        console.error(e);
+        document.getElementById('status').innerText = "❌ Erreur pointage";
+    }
 }
 
-async function calculateTime() {
-  const status = document.getElementById("status");
-  const result = document.getElementById("result");
-  status.textContent = "⏳ Calcul en cours...";
-  result.textContent = "";
+// Charger pointages et calculer temps total
+async function loadPointages() {
+    const emp = document.getElementById('employeeSelect').value;
+    if(!emp) return;
+    try {
+        const res = await fetch(`${AIRTABLE_URL}/pointages?filterByFormula={NomComplet}='${emp}'&sort[0][field]=Date&sort[0][direction]=asc`, {
+            headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+        });
+        const data = await res.json();
+        const container = document.getElementById('pointages');
+        container.innerHTML = '';
+        if(data.records.length === 0) {
+            container.innerHTML = "<p>Aucun pointage</p>";
+            document.getElementById('totalTime').innerText = "0h 0m";
+            return;
+        }
 
-  const token = document.getElementById("airtableToken").value.trim();
-  if(!token){ status.textContent="❌ Token manquant"; return; }
+        // Afficher pointages
+        data.records.forEach(rec => {
+            const div = document.createElement('div');
+            div.className = "pointage-item";
+            div.innerHTML = `${rec.fields.Date} ${rec.fields.Heure} (${rec.fields.TypeAction}) UUID: ${rec.fields.UUID} 
+                <button onclick="deletePointage('${rec.id}')">Supprimer</button>`;
+            container.appendChild(div);
+        });
 
-  try {
-    const url = getAirtableUrl() + `?filterByFormula={UUID}='${uuid}'&sort[0][field]=Date&sort[0][direction]=asc`;
-    const res = await fetch(url, {
-      headers: { "Authorization": `Bearer ${token}` }
-    });
-    if(!res.ok) throw new Error("Erreur HTTP "+res.status);
-    const data = (await res.json()).records;
-    if(data.length===0){ status.textContent="❌ Aucun pointage trouvé"; return null; }
+        // Calculer temps total
+        let totalMinutes = 0;
+        let lastIn = null;
+        data.records.forEach(rec => {
+            const timeParts = rec.fields.Heure.split(":");
+            if(rec.fields.TypeAction === "IN") {
+                lastIn = parseInt(timeParts[0])*60 + parseInt(timeParts[1]);
+            } else if(rec.fields.TypeAction === "OUT" && lastIn !== null) {
+                const outMinutes = parseInt(timeParts[0])*60 + parseInt(timeParts[1]);
+                totalMinutes += outMinutes - lastIn;
+                lastIn = null;
+            }
+        });
+        const hours = Math.floor(totalMinutes / 60);
+        const minutes = totalMinutes % 60;
+        document.getElementById('totalTime').innerText = `${hours}h ${minutes}m`;
 
-    let total = 0, lastIN=null;
-    data.forEach(r=>{
-      const fields = r.fields;
-      if(fields.TypeAction==="PointageIN") lastIN = fields.Heure;
-      else if(fields.TypeAction==="PointageOUT" && lastIN){
-        total += parseTime(fields.Heure)-parseTime(lastIN);
-        lastIN=null;
-      }
-    });
-
-    totalWorkTime = formatDuration(total);
-    status.textContent="✅ Temps total calculé :";
-    result.textContent=totalWorkTime;
-    return totalWorkTime;
-
-  } catch(err){
-    status.textContent="❌ Erreur : "+err.message;
-    return null;
-  }
+    } catch(e) {
+        console.error(e);
+        document.getElementById('status').innerText = "❌ Erreur chargement pointages";
+    }
 }
 
-function generatePDF() {
-  if(!totalWorkTime) { alert("Calculer le temps de travail d'abord"); return; }
-  const name = document.getElementById("name").value.trim();
-  const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
-  doc.text(`Rapport de pointage`, 10, 20);
-  doc.text(`Nom: ${name}`, 10, 30);
-  doc.text(`UUID: ${uuid}`, 10, 40);
-  doc.text(`Temps total travaillé: ${totalWorkTime}`, 10, 50);
-  doc.save(`Pointage_${name}.pdf`);
+// Supprimer un pointage
+async function deletePointage(recordId) {
+    if(!confirm("Confirmez la suppression de ce pointage ?")) return;
+    try {
+        await fetch(`${AIRTABLE_URL}/pointages/${recordId}`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+        });
+        loadPointages();
+    } catch(e) {
+        console.error(e);
+        alert("Erreur suppression pointage");
+    }
 }
 
-// Événements
-document.getElementById("punchIn").addEventListener("click", ()=>postPunch("PointageIN"));
-document.getElementById("punchOut").addEventListener("click", ()=>postPunch("PointageOUT"));
-document.getElementById("calculate").addEventListener("click", calculateTime);
-document.getElementById("generatePDF").addEventListener("click", generatePDF);
+// Initialisation
+loadEmployees();
 </script>
 
 </body>
