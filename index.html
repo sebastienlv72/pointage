@@ -3,99 +3,113 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage Airtable avec employés dynamiques</title>
+<title>Pointage Airtable - Version Avancée</title>
 <style>
-body { font-family: Arial, sans-serif; text-align: center; padding: 20px; background-color: #f4f4f9; }
-h1 { color: #333; margin-bottom: 20px; }
-select, input, button { padding: 10px; margin: 10px 0; font-size: 16px; border-radius: 6px; }
-button { cursor: pointer; background-color: #375aff; color: white; border: none; }
-button:hover { background-color: #003bff; }
-#status { margin-top: 15px; color: #555; font-weight: bold; }
-.pointage-item { margin: 5px 0; }
+body { font-family: Arial, sans-serif; background: #f8fafc; color: #333; text-align: center; padding: 20px; }
+h1 { color: #222; margin-bottom: 20px; }
+select, input, button { padding: 10px; margin: 8px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; }
+button { cursor: pointer; background-color: #007bff; color: white; border: none; font-weight: 600; }
+button:hover { background-color: #0056b3; }
+#status { margin-top: 10px; font-weight: bold; color: #444; }
+.pointage-item { margin: 4px 0; }
 .pointage-item button { background-color: #ff4d4d; margin-left: 10px; }
-.pointage-item button:hover { background-color: #cc0000; }
+.pointage-item button:hover { background-color: #d93636; }
+section { background: #fff; padding: 15px; border-radius: 10px; max-width: 600px; margin: 0 auto 20px auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
 </style>
 </head>
 <body>
 
-<h1>Pointage des employés</h1>
+<h1>🕒 Gestion du Pointage - Airtable</h1>
 
-<div>
-    <label>Choisir un employé :</label><br>
-    <select id="employeeSelect" onchange="loadPointages()">
-        <option value="">Chargement...</option>
-    </select>
-</div>
+<section>
+  <h3>👤 Sélection de l’employé</h3>
+  <select id="employeeSelect" onchange="onEmployeeChange()">
+    <option value="">Chargement...</option>
+  </select><br>
+  <input type="text" id="newEmployee" placeholder="Ajouter un employé">
+  <button onclick="addEmployee()">➕ Ajouter</button>
+</section>
 
-<div>
-    <input type="text" id="newEmployee" placeholder="Ajouter un nouvel employé">
-    <button onclick="addEmployee()">Ajouter</button>
-</div>
+<section>
+  <h3>📅 Pointage</h3>
+  <button onclick="punch('IN')">Entrée</button>
+  <button onclick="punch('OUT')">Sortie</button>
+  <p id="status">⏳ En attente...</p>
+</section>
 
-<div>
-    <button onclick="punch('IN')">Pointer Entrée</button>
-    <button onclick="punch('OUT')">Pointer Sortie</button>
-</div>
+<section>
+  <h3>🔍 Rechercher par période</h3>
+  <label>Du :</label> <input type="date" id="startDate">
+  <label>Au :</label> <input type="date" id="endDate">
+  <button onclick="filterByDate()">Filtrer</button>
+</section>
 
-<h3>Historique des pointages :</h3>
-<div id="pointages"></div>
-
-<h3>Temps total travaillé : <span id="totalTime">0h 0m</span></h3>
-
-<p id="status">Statut : prêt</p>
+<section>
+  <h3>📜 Historique</h3>
+  <div id="pointages">Chargement...</div>
+  <h3>Total travaillé : <span id="totalTime">0h 0m</span></h3>
+</section>
 
 <script>
-const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; // ⚠️ Ton Base ID
-const AIRTABLE_TOKEN = "patavl975YpJzd6UH.1e9444c453c0eb30065fe4c32b5574152fa0dcc53d7d6c38292f6bccf35d535b";    // ⚠️ Ton token
+/* === CONFIGURATION AIRTABLE === */
+const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI";  // ⚠️ à remplacer
+const AIRTABLE_TOKEN = "patavl975YpJzd6UH.28e5ca63db2706bfe435425f9867da23e42e8c35293789c5da7bce1ee8f10e7c";    // ⚠️ ton token Airtable
 const EMPLOYES_TABLE = "employes";
 const POINTAGES_TABLE = "pointages";
+
 const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${EMPLOYES_TABLE}`;
 const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${POINTAGES_TABLE}`;
 
-// ✅ Générer un UUID unique
+/* === FONCTIONS UTILES === */
 function generateUUID() {
-  return 'xxxxxx-xxxx-4xxx-yxxx-xxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
+  return 'xxxxxx-4xxx-yxxx'.replace(/[xy]/g, function(c) {
+    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
   });
 }
 
-// ✅ Charger la liste des employés
+function formatDate(d) {
+  return new Date(d).toLocaleDateString('fr-FR');
+}
+
+/* === CHARGEMENT DES EMPLOYÉS === */
 async function loadEmployees() {
+  const select = document.getElementById("employeeSelect");
+  select.innerHTML = "<option>Chargement...</option>";
+
   try {
     const res = await fetch(EMPLOYES_URL, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
     });
     const data = await res.json();
-
-    const select = document.getElementById('employeeSelect');
-    select.innerHTML = '';
-
-    if (!data.records || data.records.length === 0) {
-      select.innerHTML = `<option value="">Aucun employé</option>`;
-      return;
-    }
-
+    select.innerHTML = '<option value="">-- Choisir un employé --</option>';
     data.records.forEach(emp => {
-      const opt = document.createElement('option');
-      opt.value = emp.fields.NomComplet; // Le nom du champ dans ta table
+      const opt = document.createElement("option");
+      opt.value = emp.fields.UUID;
       opt.text = emp.fields.NomComplet;
       select.appendChild(opt);
     });
-
-    loadPointages();
-  } catch (e) {
-    console.error(e);
-    document.getElementById('status').innerText = "❌ Erreur lors du chargement des employés.";
+    document.getElementById("status").textContent = "✅ Employés chargés";
+  } catch (err) {
+    document.getElementById("status").textContent = "❌ Erreur chargement employés";
   }
 }
 
-// ✅ Ajouter un nouvel employé
-async function addEmployee() {
-  const name = document.getElementById('newEmployee').value.trim();
-  if (!name) { alert("Entrez un nom d'employé"); return; }
+/* === CHANGEMENT EMPLOYÉ === */
+function onEmployeeChange() {
+  const uuid = document.getElementById("employeeSelect").value;
+  if (!uuid) {
+    document.getElementById("pointages").innerHTML = "";
+    document.getElementById("totalTime").textContent = "0h 0m";
+    return;
+  }
+  loadPointages(uuid);
+}
 
+/* === AJOUT EMPLOYÉ === */
+async function addEmployee() {
+  const name = document.getElementById("newEmployee").value.trim();
+  if (!name) return alert("Veuillez entrer un nom !");
   const uuid = generateUUID();
 
   try {
@@ -105,35 +119,28 @@ async function addEmployee() {
         Authorization: `Bearer ${AIRTABLE_TOKEN}`,
         "Content-Type": "application/json"
       },
-      body: JSON.stringify({
-        records: [{
-          fields: { NomComplet: name, UUID: uuid }
-        }]
-      })
+      body: JSON.stringify({ records: [{ fields: { NomComplet: name, UUID: uuid } }] })
     });
 
-    if (!res.ok) {
-      throw new Error(`Erreur HTTP ${res.status}`);
-    }
-
-    document.getElementById('status').innerText = `✅ Employé "${name}" ajouté`;
-    document.getElementById('newEmployee').value = "";
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    document.getElementById("status").textContent = `✅ Employé ${name} ajouté`;
+    document.getElementById("newEmployee").value = "";
     loadEmployees();
   } catch (e) {
-    console.error(e);
-    document.getElementById('status').innerText = "❌ Erreur lors de l'ajout de l'employé";
+    document.getElementById("status").textContent = "❌ Erreur ajout employé";
   }
 }
 
-// ✅ Pointer IN / OUT
+/* === POINTAGE === */
 async function punch(type) {
-  const emp = document.getElementById('employeeSelect').value;
-  if (!emp) { alert("Sélectionnez un employé"); return; }
+  const select = document.getElementById("employeeSelect");
+  const uuid = select.value;
+  const name = select.options[select.selectedIndex]?.text;
 
+  if (!uuid) return alert("Sélectionnez un employé !");
   const now = new Date();
   const heure = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const date = now.toLocaleDateString('fr-FR');
-  const uuid = generateUUID();
+  const date = now.toISOString().split("T")[0]; // format AAAA-MM-JJ
 
   try {
     const res = await fetch(POINTAGES_URL, {
@@ -143,88 +150,94 @@ async function punch(type) {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        records: [{
-          fields: { NomComplet: emp, TypeAction: type, Heure: heure, Date: date, UUID: uuid }
-        }]
+        records: [{ fields: { UUID: uuid, NomComplet: name, TypeAction: type, Heure: heure, Date: date } }]
       })
     });
 
-    if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
-
-    document.getElementById('status').innerText = `✅ ${emp} a pointé ${type} à ${heure}`;
-    loadPointages();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    document.getElementById("status").textContent = `✅ ${name} a pointé ${type} à ${heure}`;
+    loadPointages(uuid);
   } catch (e) {
-    console.error(e);
-    document.getElementById('status').innerText = "❌ Erreur de pointage";
+    document.getElementById("status").textContent = "❌ Erreur pointage";
   }
 }
 
-// ✅ Charger les pointages
-async function loadPointages() {
-  const emp = document.getElementById('employeeSelect').value;
-  if (!emp) return;
+/* === CHARGER LES POINTAGES === */
+async function loadPointages(uuid, start = null, end = null) {
+  const container = document.getElementById("pointages");
+  container.innerHTML = "Chargement...";
+  let filter = `filterByFormula={UUID}='${uuid}'`;
+
+  if (start && end) {
+    filter += `AND(IS_AFTER({Date}, '${start}'), IS_BEFORE({Date}, '${end}'))`;
+  }
 
   try {
-    const res = await fetch(`${POINTAGES_URL}?filterByFormula={NomComplet}='${emp}'&sort[0][field]=Date&sort[0][direction]=asc`, {
+    const res = await fetch(`${POINTAGES_URL}?${filter}&sort[0][field]=Date&sort[0][direction]=asc`, {
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
     });
-
     const data = await res.json();
-    const container = document.getElementById('pointages');
-    container.innerHTML = '';
 
-    if (!data.records || data.records.length === 0) {
+    container.innerHTML = "";
+    if (!data.records.length) {
       container.innerHTML = "<p>Aucun pointage</p>";
-      document.getElementById('totalTime').innerText = "0h 0m";
+      document.getElementById("totalTime").textContent = "0h 0m";
       return;
     }
 
-    let totalMinutes = 0, lastIn = null;
+    let total = 0, lastIn = null;
+    data.records.forEach(r => {
+      const f = r.fields;
+      const [h, m] = f.Heure.split(':').map(Number);
+      const t = h * 60 + m;
 
-    data.records.forEach(rec => {
-      const div = document.createElement('div');
-      div.className = "pointage-item";
-      div.innerHTML = `${rec.fields.Date} ${rec.fields.Heure} (${rec.fields.TypeAction}) 
-      <button onclick="deletePointage('${rec.id}')">Supprimer</button>`;
-      container.appendChild(div);
-
-      const [h, m] = rec.fields.Heure.split(':').map(Number);
-      if (rec.fields.TypeAction === "IN") lastIn = h * 60 + m;
-      if (rec.fields.TypeAction === "OUT" && lastIn !== null) {
-        totalMinutes += (h * 60 + m) - lastIn;
+      if (f.TypeAction === "IN") lastIn = t;
+      if (f.TypeAction === "OUT" && lastIn !== null) {
+        total += (t - lastIn);
         lastIn = null;
       }
+
+      const div = document.createElement("div");
+      div.className = "pointage-item";
+      div.innerHTML = `${formatDate(f.Date)} - ${f.Heure} (${f.TypeAction}) <button onclick="deletePointage('${r.id}', '${uuid}')">Supprimer</button>`;
+      container.appendChild(div);
     });
 
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    document.getElementById('totalTime').innerText = `${hours}h ${minutes}m`;
+    const h = Math.floor(total / 60);
+    const m = total % 60;
+    document.getElementById("totalTime").textContent = `${h}h ${m}m`;
   } catch (e) {
-    console.error(e);
-    document.getElementById('status').innerText = "❌ Erreur lors du chargement des pointages";
+    container.innerHTML = "<p>❌ Erreur chargement</p>";
   }
 }
 
-// ✅ Supprimer un pointage
-async function deletePointage(recordId) {
+/* === SUPPRESSION POINTAGE === */
+async function deletePointage(id, uuid) {
   if (!confirm("Supprimer ce pointage ?")) return;
-
   try {
-    const res = await fetch(`${POINTAGES_URL}/${recordId}`, {
+    const res = await fetch(`${POINTAGES_URL}/${id}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
     });
-
-    if (!res.ok) throw new Error(`Erreur HTTP ${res.status}`);
-    loadPointages();
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    loadPointages(uuid);
   } catch (e) {
-    console.error(e);
-    alert("❌ Erreur lors de la suppression");
+    alert("❌ Erreur suppression");
   }
 }
 
+/* === FILTRER PAR DATE === */
+function filterByDate() {
+  const start = document.getElementById("startDate").value;
+  const end = document.getElementById("endDate").value;
+  const uuid = document.getElementById("employeeSelect").value;
+  if (!uuid) return alert("Choisissez un employé !");
+  if (!start || !end) return alert("Choisissez les deux dates !");
+  loadPointages(uuid, start, end);
+}
+
+/* === INIT === */
 loadEmployees();
 </script>
-
 </body>
 </html>
