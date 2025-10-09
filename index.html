@@ -1,242 +1,330 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Pointage Airtable - Version Avancée</title>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pointage Airtable - Debug & Fix</title>
 <style>
-body { font-family: Arial, sans-serif; background: #f8fafc; color: #333; text-align: center; padding: 20px; }
-h1 { color: #222; margin-bottom: 20px; }
-select, input, button { padding: 10px; margin: 8px; font-size: 16px; border-radius: 6px; border: 1px solid #ccc; }
-button { cursor: pointer; background-color: #007bff; color: white; border: none; font-weight: 600; }
-button:hover { background-color: #0056b3; }
-#status { margin-top: 10px; font-weight: bold; color: #444; }
-.pointage-item { margin: 4px 0; }
-.pointage-item button { background-color: #ff4d4d; margin-left: 10px; }
-.pointage-item button:hover { background-color: #d93636; }
-section { background: #fff; padding: 15px; border-radius: 10px; max-width: 600px; margin: 0 auto 20px auto; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+  body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;color:#222;padding:20px;text-align:center;}
+  section{background:#fff;border-radius:10px;padding:16px;max-width:760px;margin:16px auto;box-shadow:0 3px 10px rgba(0,0,0,0.06)}
+  select,input,button{padding:10px;margin:8px;font-size:15px;border-radius:8px;border:1px solid #d4d7dd}
+  button{background:#2f6fff;color:#fff;border:none;cursor:pointer}
+  button[disabled]{opacity:0.6;cursor:not-allowed}
+  .danger{background:#ff5a5a}
+  .pointage-item{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #f0f2f5}
+  #status{margin-top:12px;font-weight:600}
+  .small{font-size:13px;color:#666}
 </style>
 </head>
 <body>
+  <h1>Pointage Airtable — Debug & Fix</h1>
 
-<h1>🕒 Gestion du Pointage - Airtable</h1>
+  <section>
+    <h3>Paramètres (remplace par tes valeurs)</h3>
+    <div class="small">AIRTABLE_BASE_ID et AIRTABLE_TOKEN sont visibles ici pour tests.</div>
+    <pre id="config" class="small"></pre>
+  </section>
 
-<section>
-  <h3>👤 Sélection de l’employé</h3>
-  <select id="employeeSelect" onchange="onEmployeeChange()">
-    <option value="">Chargement...</option>
-  </select><br>
-  <input type="text" id="newEmployee" placeholder="Ajouter un employé">
-  <button onclick="addEmployee()">➕ Ajouter</button>
-</section>
+  <section>
+    <h3>Employés</h3>
+    <select id="employeeSelect" onchange="onEmployeeChange()">
+      <option value="">Chargement...</option>
+    </select>
+    <div>
+      <input id="newEmployee" placeholder="Nouveau nom (ex : Sébastien)" />
+      <button id="addBtn" onclick="addEmployee()">➕ Ajouter</button>
+    </div>
+  </section>
 
-<section>
-  <h3>📅 Pointage</h3>
-  <button onclick="punch('IN')">Entrée</button>
-  <button onclick="punch('OUT')">Sortie</button>
-  <p id="status">⏳ En attente...</p>
-</section>
+  <section>
+    <h3>Pointage</h3>
+    <div>
+      <button id="inBtn" onclick="punch('IN')">Entrée</button>
+      <button id="outBtn" onclick="punch('OUT')">Sortie</button>
+    </div>
+    <p id="status">Statut : prêt</p>
+  </section>
 
-<section>
-  <h3>🔍 Rechercher par période</h3>
-  <label>Du :</label> <input type="date" id="startDate">
-  <label>Au :</label> <input type="date" id="endDate">
-  <button onclick="filterByDate()">Filtrer</button>
-</section>
+  <section>
+    <h3>Filtrer</h3>
+    <label>Du <input type="date" id="startDate" /></label>
+    <label>Au <input type="date" id="endDate" /></label>
+    <button onclick="filterByDate()">Appliquer filtre</button>
+    <button onclick="clearFilter()">Réinitialiser filtre</button>
+  </section>
 
-<section>
-  <h3>📜 Historique</h3>
-  <div id="pointages">Chargement...</div>
-  <h3>Total travaillé : <span id="totalTime">0h 0m</span></h3>
-</section>
+  <section>
+    <h3>Historique</h3>
+    <div id="pointages">Chargement...</div>
+    <h4>Total travaillé : <span id="totalTime">0h 0m</span></h4>
+  </section>
 
 <script>
-/* === CONFIGURATION AIRTABLE === */
-const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI";  // ⚠️ à remplacer
-const AIRTABLE_TOKEN = "patavl975YpJzd6UH.28e5ca63db2706bfe435425f9867da23e42e8c35293789c5da7bce1ee8f10e7c";    // ⚠️ ton token Airtable
+/* ========== CONFIGURATION ========== */
+// Remplace ces deux valeurs par tes propres valeurs avant test
+const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; // <-- remplace
+const AIRTABLE_TOKEN   = "patavl975YpJzd6UH.28e5ca63db2706bfe435425f9867da23e42e8c35293789c5da7bce1ee8f10e7c"; // <-- remplace
+
+document.getElementById('config').innerText = `Base ID: ${AIRTABLE_BASE_ID}\nToken: ${AIRTABLE_TOKEN ? 'OK (masqué)' : 'ABSENT'}`;
+
+/* Noms EXACTS des tables (vérifie dans Airtable) */
 const EMPLOYES_TABLE = "employes";
 const POINTAGES_TABLE = "pointages";
 
-const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${EMPLOYES_TABLE}`;
-const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${POINTAGES_TABLE}`;
+const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(EMPLOYES_TABLE)}`;
+const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(POINTAGES_TABLE)}`;
 
-/* === FONCTIONS UTILES === */
-function generateUUID() {
-  return 'xxxxxx-4xxx-yxxx'.replace(/[xy]/g, function(c) {
-    const r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
-    return v.toString(16);
-  });
+/* ========== UTILITAIRES ========== */
+function generateUUID(){
+  return 'xxxxxx-4xxx-yxxx'.replace(/[xy]/g, c=> (Math.random()*16|0).toString(16));
+}
+function setStatus(msg, isError=false){
+  const s = document.getElementById('status');
+  s.innerText = `Statut : ${msg}`;
+  s.style.color = isError ? '#b00020' : '#1a7f1a';
+}
+function safeText(v){ return v === undefined || v === null ? '' : String(v); }
+
+/* Parse une date quelle que soit la forme simple (ISO ou dd/mm/yyyy) */
+function parseDateFlexible(s){
+  if(!s) return null;
+  // si ISO OK
+  const dIso = new Date(s);
+  if(!isNaN(dIso)) return new Date(dIso.getFullYear(), dIso.getMonth(), dIso.getDate());
+  // tenter dd/mm/yyyy ou d/m/yyyy
+  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+  if(m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
+  // fallback
+  return null;
 }
 
-function formatDate(d) {
-  return new Date(d).toLocaleDateString('fr-FR');
-}
-
-/* === CHARGEMENT DES EMPLOYÉS === */
-async function loadEmployees() {
-  const select = document.getElementById("employeeSelect");
-  select.innerHTML = "<option>Chargement...</option>";
-
+/* ========== CHARGEMENT EMPLOYÉS ========== */
+async function loadEmployees(selectUuid=null){
+  const sel = document.getElementById('employeeSelect');
+  sel.innerHTML = '<option value="">Chargement...</option>';
+  setStatus('Chargement des employés...');
   try {
-    const res = await fetch(EMPLOYES_URL, {
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
+    const res = await fetch(EMPLOYES_URL, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
+    const json = await res.json();
+    if(!res.ok){
+      const msg = json?.error?.message || JSON.stringify(json);
+      throw new Error(`Airtable ${res.status}: ${msg}`);
+    }
+    sel.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
+    json.records.forEach(r=>{
+      const name = safeText(r.fields.NomComplet || r.fields.Name || r.fields.Nom || '');
+      const uuid  = safeText(r.fields.UUID || r.id); // préférer champ UUID si présent sinon id
+      const o = document.createElement('option');
+      o.value = uuid;
+      o.text = name || `(sans nom - ${uuid})`;
+      sel.appendChild(o);
     });
-    const data = await res.json();
-    select.innerHTML = '<option value="">-- Choisir un employé --</option>';
-    data.records.forEach(emp => {
-      const opt = document.createElement("option");
-      opt.value = emp.fields.UUID;
-      opt.text = emp.fields.NomComplet;
-      select.appendChild(opt);
-    });
-    document.getElementById("status").textContent = "✅ Employés chargés";
-  } catch (err) {
-    document.getElementById("status").textContent = "❌ Erreur chargement employés";
+    setStatus('Employés chargés');
+    // si selectUuid fourni => sélectionner
+    if(selectUuid){
+      sel.value = selectUuid;
+      if(sel.value) loadPointages(sel.value);
+    } else {
+      // si option par défaut => ne rien faire
+      const current = sel.value;
+      if(current) loadPointages(current);
+    }
+  } catch(err){
+    console.error('loadEmployees error', err);
+    sel.innerHTML = '<option value="">Erreur chargement</option>';
+    setStatus(`Erreur charg. employés : ${err.message}`, true);
   }
 }
 
-/* === CHANGEMENT EMPLOYÉ === */
-function onEmployeeChange() {
-  const uuid = document.getElementById("employeeSelect").value;
-  if (!uuid) {
-    document.getElementById("pointages").innerHTML = "";
-    document.getElementById("totalTime").textContent = "0h 0m";
-    return;
-  }
-  loadPointages(uuid);
-}
-
-/* === AJOUT EMPLOYÉ === */
-async function addEmployee() {
-  const name = document.getElementById("newEmployee").value.trim();
-  if (!name) return alert("Veuillez entrer un nom !");
+/* ========== AJOUT EMPLOYÉ ========== */
+async function addEmployee(){
+  const input = document.getElementById('newEmployee');
+  const name = input.value.trim();
+  if(!name){ alert('Saisir un nom d\'employé'); return; }
+  const addBtn = document.getElementById('addBtn');
+  addBtn.disabled = true;
+  setStatus('Ajout de l\'employé...');
   const uuid = generateUUID();
-
   try {
+    const payload = { records: [{ fields: { NomComplet: name, UUID: uuid } }] };
     const res = await fetch(EMPLOYES_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${AIRTABLE_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ records: [{ fields: { NomComplet: name, UUID: uuid } }] })
+      method: 'POST',
+      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    document.getElementById("status").textContent = `✅ Employé ${name} ajouté`;
-    document.getElementById("newEmployee").value = "";
-    loadEmployees();
-  } catch (e) {
-    document.getElementById("status").textContent = "❌ Erreur ajout employé";
-  }
+    const json = await res.json();
+    if(!res.ok){
+      const msg = json?.error?.message || JSON.stringify(json);
+      throw new Error(`Airtable ${res.status}: ${msg}`);
+    }
+    input.value = '';
+    setStatus(`Employé "${name}" ajouté`);
+    // sélectionner nouvel employé après rechargement
+    await loadEmployees(json.records?.[0]?.fields?.UUID || json.records?.[0]?.id);
+  } catch(err){
+    console.error('addEmployee error', err);
+    setStatus(`Erreur ajout : ${err.message}`, true);
+    alert('Erreur ajout employé : ' + err.message);
+  } finally { addBtn.disabled = false; }
 }
 
-/* === POINTAGE === */
-async function punch(type) {
-  const select = document.getElementById("employeeSelect");
-  const uuid = select.value;
-  const name = select.options[select.selectedIndex]?.text;
+/* ========== POINTAGE (IN/OUT) ========== */
+async function punch(type){
+  const sel = document.getElementById('employeeSelect');
+  const uuid = sel.value;
+  const name = sel.options[sel.selectedIndex]?.text || '';
+  if(!uuid){ alert('Sélectionner un employé'); return; }
 
-  if (!uuid) return alert("Sélectionnez un employé !");
+  const inBtn = document.getElementById('inBtn');
+  const outBtn = document.getElementById('outBtn');
+  inBtn && (inBtn.disabled = outBtn && outBtn.disabled = true);
+
   const now = new Date();
-  const heure = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
-  const date = now.toISOString().split("T")[0]; // format AAAA-MM-JJ
+  const heure = now.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
+  const dateIso = now.toISOString().split('T')[0]; // YYYY-MM-DD (Airtable date-compatible)
 
+  setStatus(`${type} en cours...`);
   try {
+    const payload = { records: [{ fields: { UUID: uuid, NomComplet: name, TypeAction: type, Heure: heure, Date: dateIso } }] };
     const res = await fetch(POINTAGES_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${AIRTABLE_TOKEN}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        records: [{ fields: { UUID: uuid, NomComplet: name, TypeAction: type, Heure: heure, Date: date } }]
-      })
+      method: 'POST',
+      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
     });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    document.getElementById("status").textContent = `✅ ${name} a pointé ${type} à ${heure}`;
-    loadPointages(uuid);
-  } catch (e) {
-    document.getElementById("status").textContent = "❌ Erreur pointage";
+    const json = await res.json();
+    if(!res.ok){
+      const msg = json?.error?.message || JSON.stringify(json);
+      throw new Error(`Airtable ${res.status}: ${msg}`);
+    }
+    setStatus(`${name} a pointé ${type} à ${heure}`);
+    // recharger pointages pour l'employé
+    await loadPointages(uuid);
+  } catch(err){
+    console.error('punch error', err);
+    setStatus(`Erreur de pointage : ${err.message}`, true);
+    alert('Erreur lors du pointage :\n' + err.message + '\nVoir console pour plus de détails.');
+  } finally {
+    inBtn && (inBtn.disabled = outBtn && outBtn.disabled = false);
   }
 }
 
-/* === CHARGER LES POINTAGES === */
-async function loadPointages(uuid, start = null, end = null) {
-  const container = document.getElementById("pointages");
-  container.innerHTML = "Chargement...";
-  let filter = `filterByFormula={UUID}='${uuid}'`;
-
-  if (start && end) {
-    filter += `AND(IS_AFTER({Date}, '${start}'), IS_BEFORE({Date}, '${end}'))`;
-  }
-
+/* ========== CHARGER POINTAGES (avec filtre client par date) ========== */
+let lastLoadedRecords = []; // stocker pour réutiliser
+async function loadPointages(uuid, startDate=null, endDate=null){
+  const container = document.getElementById('pointages');
+  container.innerHTML = 'Chargement...';
+  setStatus('Chargement pointages...');
   try {
-    const res = await fetch(`${POINTAGES_URL}?${filter}&sort[0][field]=Date&sort[0][direction]=asc`, {
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-    });
-    const data = await res.json();
+    // filterByFormula encodé : on récupère uniquement les records pour UUID
+    const formula = encodeURIComponent(`{UUID}='${uuid}'`);
+    const url = `${POINTAGES_URL}?filterByFormula=${formula}&pageSize=100&sort[0][field]=Date&sort[0][direction]=asc`;
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
+    const json = await res.json();
+    if(!res.ok){
+      const msg = json?.error?.message || JSON.stringify(json);
+      throw new Error(`Airtable ${res.status}: ${msg}`);
+    }
+    lastLoadedRecords = json.records || [];
 
-    container.innerHTML = "";
-    if (!data.records.length) {
-      container.innerHTML = "<p>Aucun pointage</p>";
-      document.getElementById("totalTime").textContent = "0h 0m";
+    // filtrage par période côté client (si fournis)
+    let records = lastLoadedRecords;
+    if(startDate || endDate){
+      const start = startDate ? new Date(startDate) : null;
+      const end   = endDate   ? new Date(endDate)   : null;
+      records = records.filter(r=>{
+        const ds = r.fields.Date;
+        const dObj = parseDateFlexible(ds);
+        if(!dObj) return false;
+        if(start && dObj < start) return false;
+        if(end   && dObj > end)   return false;
+        return true;
+      });
+    }
+
+    container.innerHTML = '';
+    if(records.length === 0){
+      container.innerHTML = '<p class="small">Aucun pointage</p>';
+      document.getElementById('totalTime').innerText = '0h 0m';
+      setStatus('Aucun pointage');
       return;
     }
 
-    let total = 0, lastIn = null;
-    data.records.forEach(r => {
+    // calcul total et affichage
+    let totalMinutes = 0;
+    let lastIn = null;
+    records.forEach(r=>{
       const f = r.fields;
-      const [h, m] = f.Heure.split(':').map(Number);
-      const t = h * 60 + m;
+      const timeParts = (f.Heure || '00:00').split(':').map(Number);
+      const minutes = (timeParts[0]||0)*60 + (timeParts[1]||0);
 
-      if (f.TypeAction === "IN") lastIn = t;
-      if (f.TypeAction === "OUT" && lastIn !== null) {
-        total += (t - lastIn);
+      if(String(f.TypeAction).toUpperCase().includes('IN')) lastIn = minutes;
+      else if(String(f.TypeAction).toUpperCase().includes('OUT') && lastIn !== null) {
+        totalMinutes += (minutes - lastIn);
         lastIn = null;
       }
 
-      const div = document.createElement("div");
-      div.className = "pointage-item";
-      div.innerHTML = `${formatDate(f.Date)} - ${f.Heure} (${f.TypeAction}) <button onclick="deletePointage('${r.id}', '${uuid}')">Supprimer</button>`;
+      const div = document.createElement('div');
+      div.className = 'pointage-item';
+      div.innerHTML = `<div>${safeText(f.Date)} &nbsp; ${safeText(f.Heure)} &nbsp; (${safeText(f.TypeAction)})</div>
+                       <div><button class="danger" onclick="deletePointage('${r.id}', '${uuid}')">Supprimer</button></div>`;
       container.appendChild(div);
     });
 
-    const h = Math.floor(total / 60);
-    const m = total % 60;
-    document.getElementById("totalTime").textContent = `${h}h ${m}m`;
-  } catch (e) {
-    container.innerHTML = "<p>❌ Erreur chargement</p>";
+    const h = Math.floor(totalMinutes/60);
+    const m = totalMinutes % 60;
+    document.getElementById('totalTime').innerText = `${h}h ${m}m`;
+    setStatus('Pointages chargés');
+  } catch(err){
+    console.error('loadPointages error', err);
+    container.innerHTML = `<p class="small">Erreur chargement (voir console)</p>`;
+    setStatus(`Erreur chargement pointages: ${err.message}`, true);
   }
 }
 
-/* === SUPPRESSION POINTAGE === */
-async function deletePointage(id, uuid) {
-  if (!confirm("Supprimer ce pointage ?")) return;
+/* ========== SUPPRESSION ========= */
+async function deletePointage(recordId, uuid) {
+  if(!confirm('Confirmer suppression ?')) return;
   try {
-    const res = await fetch(`${POINTAGES_URL}/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` }
-    });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const res = await fetch(`${POINTAGES_URL}/${recordId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
+    const json = await res.json();
+    if(!res.ok){
+      const msg = json?.error?.message || JSON.stringify(json);
+      throw new Error(`Airtable ${res.status}: ${msg}`);
+    }
+    setStatus('Pointage supprimé');
     loadPointages(uuid);
-  } catch (e) {
-    alert("❌ Erreur suppression");
+  } catch(err){
+    console.error('deletePointage error', err);
+    alert('Erreur suppression : ' + err.message);
   }
 }
 
-/* === FILTRER PAR DATE === */
-function filterByDate() {
-  const start = document.getElementById("startDate").value;
-  const end = document.getElementById("endDate").value;
-  const uuid = document.getElementById("employeeSelect").value;
-  if (!uuid) return alert("Choisissez un employé !");
-  if (!start || !end) return alert("Choisissez les deux dates !");
+/* ========== FILTRAGE PAR DATE (boutons) ========== */
+function filterByDate(){
+  const start = document.getElementById('startDate').value || null;
+  const end = document.getElementById('endDate').value || null;
+  const uuid = document.getElementById('employeeSelect').value;
+  if(!uuid) return alert('Sélectionne d\'abord un employé');
+  if(start && end && new Date(start) > new Date(end)) return alert('La date de début doit être antérieure à la date de fin');
   loadPointages(uuid, start, end);
 }
+function clearFilter(){
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value = '';
+  const uuid = document.getElementById('employeeSelect').value;
+  if(uuid) loadPointages(uuid);
+}
 
-/* === INIT === */
+/* ========== SELECT CHANGE HANDLER ========== */
+function onEmployeeChange(){
+  const uuid = document.getElementById('employeeSelect').value;
+  if(!uuid){ document.getElementById('pointages').innerHTML = ''; document.getElementById('totalTime').innerText='0h 0m'; return; }
+  document.getElementById('startDate').value = '';
+  document.getElementById('endDate').value = '';
+  loadPointages(uuid);
+}
+
+/* ========== INIT ========= */
 loadEmployees();
 </script>
 </body>
