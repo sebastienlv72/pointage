@@ -52,7 +52,6 @@
     <div id="pointages">Chargement...</div>
     <h4>Total travaillé : <span id="totalTime">0h 0m</span></h4>
   </section>
-
 <script>
 /* ===== CONFIGURATION ===== */
 const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; 
@@ -64,13 +63,22 @@ const POINTAGES_TABLE = "pointages";
 const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(EMPLOYES_TABLE)}`;
 const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(POINTAGES_TABLE)}`;
 
+/* ===== OUTILS ===== */
 function setStatus(msg, err=false){
   const el = document.getElementById('status');
   el.textContent = `Statut : ${msg}`;
   el.style.color = err ? 'red' : 'green';
 }
-function generateUUID(){
-  return 'xxxxxx-4xxx-yxxx'.replace(/[xy]/g, c=> (Math.random()*16|0).toString(16));
+
+// UUID stable par appareil + nom
+function getOrCreateUUID(employeeName) {
+  const key = `UUID_${employeeName.toLowerCase()}`;
+  let uuid = localStorage.getItem(key);
+  if (!uuid) {
+    uuid = `${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}_${btoa(navigator.userAgent).slice(0,8)}`;
+    localStorage.setItem(key, uuid);
+  }
+  return uuid;
 }
 
 /* ===== CHARGER EMPLOYÉS ===== */
@@ -102,7 +110,10 @@ async function loadEmployees(selectUuid=null){
 async function addEmployee(){
   const name = document.getElementById('newEmployee').value.trim();
   if(!name) return alert('Saisir un nom.');
-  const uuid = generateUUID();
+  
+  // Génère un UUID lié à l’appareil et à l’employé
+  const uuid = getOrCreateUUID(name);
+
   try {
     const res = await fetch(EMPLOYES_URL, {
       method:'POST',
@@ -123,9 +134,11 @@ async function addEmployee(){
 /* ===== POINTAGE IN/OUT ===== */
 async function punch(type){
   const sel = document.getElementById('employeeSelect');
-  const uuid = sel.value;
   const name = sel.options[sel.selectedIndex]?.text;
-  if(!uuid) return alert('Sélectionner un employé.');
+  if(!name) return alert('Sélectionner un employé.');
+
+  // Récupère l’UUID stable lié à ce nom
+  const uuid = getOrCreateUUID(name);
 
   const now = new Date();
   const heure = now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
@@ -211,9 +224,15 @@ function clearFilter(){
 
 /* ===== ON CHANGE ===== */
 function onEmployeeChange(){
-  const uuid=document.getElementById('employeeSelect').value;
-  if(uuid) loadPointages(uuid);
-  else { document.getElementById('pointages').innerHTML=''; document.getElementById('totalTime').textContent='0h 0m'; }
+  const sel=document.getElementById('employeeSelect');
+  const name=sel.options[sel.selectedIndex]?.text;
+  if(name){
+    const uuid=getOrCreateUUID(name);
+    loadPointages(uuid);
+  } else {
+    document.getElementById('pointages').innerHTML='';
+    document.getElementById('totalTime').textContent='0h 0m';
+  }
 }
 
 /* ===== INIT ===== */
