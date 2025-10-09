@@ -46,9 +46,11 @@ button:hover { background-color: #003bff; }
 
 <script>
 const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; // Remplace par ton Base ID
-const AIRTABLE_TOKEN = "patavl975YpJzd6UH.4b4218f1643c269ea11b7350807b31a427d70ad9a1a54b674d73fa5c9ffe9657";    // Remplace par ton Token Airtable
-const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/employes`;
-const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/pointages`;
+const AIRTABLE_TOKEN = "patavl975YpJzd6UH.626eedaedc7b8bd599c17aa6c21f152abe7466e2ddbca72f92acdf462c0633d4";    // Remplace par ton Token Airtable
+const EMPLOYES_TABLE = "employes";            // Nom exact de ta table employes
+const POINTAGES_TABLE = "pointages";          // Nom exact de ta table pointages
+const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${EMPLOYES_TABLE}`;
+const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${POINTAGES_TABLE}`;
 
 // Générer UUID
 function generateUUID() {
@@ -66,16 +68,20 @@ async function loadEmployees() {
         const data = await res.json();
         const select = document.getElementById('employeeSelect');
         select.innerHTML = '';
+        if(data.records.length === 0){
+            select.innerHTML = `<option value="">Aucun employé</option>`;
+            return;
+        }
         data.records.forEach(emp => {
             const option = document.createElement('option');
-            option.value = emp.fields.NomTable;
-            option.text = emp.fields.NomAffiche;
+            option.value = emp.fields.NomComplet; // correspond au champ NomComplet dans Airtable
+            option.text = emp.fields.NomComplet;
             select.appendChild(option);
         });
         loadPointages();
     } catch(e) {
         console.error(e);
-        alert("Erreur chargement employés");
+        document.getElementById('status').innerText = "❌ Erreur chargement employés";
     }
 }
 
@@ -83,7 +89,7 @@ async function loadEmployees() {
 async function addEmployee() {
     const newEmp = document.getElementById('newEmployee').value.trim();
     if(!newEmp) { alert("Entrez un nom"); return; }
-    const nomTable = newEmp.toLowerCase().replace(/\s+/g,'');
+    const uuid = generateUUID();
     try {
         await fetch(EMPLOYES_URL, {
             method: "POST",
@@ -91,13 +97,14 @@ async function addEmployee() {
                 Authorization: `Bearer ${AIRTABLE_TOKEN}`,
                 "Content-Type": "application/json"
             },
-            body: JSON.stringify({ records: [{ fields: { NomTable: nomTable, NomAffiche: newEmp, UUID: generateUUID() } }] })
+            body: JSON.stringify({ records: [{ fields: { NomComplet: newEmp, UUID: uuid } }] })
         });
         document.getElementById('newEmployee').value = "";
         loadEmployees();
+        document.getElementById('status').innerText = `✅ Employé ${newEmp} ajouté`;
     } catch (e) {
         console.error(e);
-        alert("Erreur ajout employé");
+        document.getElementById('status').innerText = "❌ Erreur ajout employé";
     }
 }
 
