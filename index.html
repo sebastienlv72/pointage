@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Pointage Airtable - Debug & Fix</title>
+<title>Pointage Airtable - Version corrigée</title>
 <style>
   body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;color:#222;padding:20px;text-align:center;}
   section{background:#fff;border-radius:10px;padding:16px;max-width:760px;margin:16px auto;box-shadow:0 3px 10px rgba(0,0,0,0.06)}
@@ -17,13 +17,7 @@
 </style>
 </head>
 <body>
-  <h1>Pointage Airtable — Debug & Fix</h1>
-
-  <section>
-    <h3>Paramètres (remplace par tes valeurs)</h3>
-    <div class="small">AIRTABLE_BASE_ID et AIRTABLE_TOKEN sont visibles ici pour tests.</div>
-    <pre id="config" class="small"></pre>
-  </section>
+  <h1>Pointage Airtable — Corrigé ✅</h1>
 
   <section>
     <h3>Employés</h3>
@@ -60,271 +54,169 @@
   </section>
 
 <script>
-/* ========== CONFIGURATION ========== */
-// Remplace ces deux valeurs par tes propres valeurs avant test
-const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; // <-- remplace
-const AIRTABLE_TOKEN   = "patavl975YpJzd6UH.28e5ca63db2706bfe435425f9867da23e42e8c35293789c5da7bce1ee8f10e7c"; // <-- remplace
+/* ===== CONFIGURATION ===== */
+const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; 
+const AIRTABLE_TOKEN   = "patavl975YpJzd6UH.28e5ca63db2706bfe435425f9867da23e42e8c35293789c5da7bce1ee8f10e7c"; 
 
-document.getElementById('config').innerText = `Base ID: ${AIRTABLE_BASE_ID}\nToken: ${AIRTABLE_TOKEN ? 'OK (masqué)' : 'ABSENT'}`;
-
-/* Noms EXACTS des tables (vérifie dans Airtable) */
 const EMPLOYES_TABLE = "employes";
 const POINTAGES_TABLE = "pointages";
 
 const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(EMPLOYES_TABLE)}`;
 const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(POINTAGES_TABLE)}`;
 
-/* ========== UTILITAIRES ========== */
+function setStatus(msg, err=false){
+  const el = document.getElementById('status');
+  el.textContent = `Statut : ${msg}`;
+  el.style.color = err ? 'red' : 'green';
+}
 function generateUUID(){
   return 'xxxxxx-4xxx-yxxx'.replace(/[xy]/g, c=> (Math.random()*16|0).toString(16));
 }
-function setStatus(msg, isError=false){
-  const s = document.getElementById('status');
-  s.innerText = `Statut : ${msg}`;
-  s.style.color = isError ? '#b00020' : '#1a7f1a';
-}
-function safeText(v){ return v === undefined || v === null ? '' : String(v); }
 
-/* Parse une date quelle que soit la forme simple (ISO ou dd/mm/yyyy) */
-function parseDateFlexible(s){
-  if(!s) return null;
-  // si ISO OK
-  const dIso = new Date(s);
-  if(!isNaN(dIso)) return new Date(dIso.getFullYear(), dIso.getMonth(), dIso.getDate());
-  // tenter dd/mm/yyyy ou d/m/yyyy
-  const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-  if(m) return new Date(Number(m[3]), Number(m[2]) - 1, Number(m[1]));
-  // fallback
-  return null;
-}
-
-/* ========== CHARGEMENT EMPLOYÉS ========== */
+/* ===== CHARGER EMPLOYÉS ===== */
 async function loadEmployees(selectUuid=null){
   const sel = document.getElementById('employeeSelect');
-  sel.innerHTML = '<option value="">Chargement...</option>';
-  setStatus('Chargement des employés...');
+  sel.innerHTML = '<option>Chargement...</option>';
   try {
-    const res = await fetch(EMPLOYES_URL, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
-    const json = await res.json();
-    if(!res.ok){
-      const msg = json?.error?.message || JSON.stringify(json);
-      throw new Error(`Airtable ${res.status}: ${msg}`);
-    }
+    const res = await fetch(EMPLOYES_URL, { headers: { Authorization:`Bearer ${AIRTABLE_TOKEN}` } });
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error?.message);
     sel.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
-    json.records.forEach(r=>{
-      const name = safeText(r.fields.NomComplet || r.fields.Name || r.fields.Nom || '');
-      const uuid  = safeText(r.fields.UUID || r.id); // préférer champ UUID si présent sinon id
-      const o = document.createElement('option');
-      o.value = uuid;
-      o.text = name || `(sans nom - ${uuid})`;
-      sel.appendChild(o);
+    data.records.forEach(rec=>{
+      const uuid = rec.fields.UUID || rec.id;
+      const name = rec.fields.NomComplet || 'Sans nom';
+      const opt = document.createElement('option');
+      opt.value = uuid;
+      opt.textContent = name;
+      sel.appendChild(opt);
     });
+    if(selectUuid) sel.value = selectUuid;
     setStatus('Employés chargés');
-    // si selectUuid fourni => sélectionner
-    if(selectUuid){
-      sel.value = selectUuid;
-      if(sel.value) loadPointages(sel.value);
-    } else {
-      // si option par défaut => ne rien faire
-      const current = sel.value;
-      if(current) loadPointages(current);
-    }
-  } catch(err){
-    console.error('loadEmployees error', err);
-    sel.innerHTML = '<option value="">Erreur chargement</option>';
-    setStatus(`Erreur charg. employés : ${err.message}`, true);
+  } catch(e){
+    console.error(e);
+    setStatus('Erreur chargement employés', true);
   }
 }
 
-/* ========== AJOUT EMPLOYÉ ========== */
+/* ===== AJOUT EMPLOYÉ ===== */
 async function addEmployee(){
-  const input = document.getElementById('newEmployee');
-  const name = input.value.trim();
-  if(!name){ alert('Saisir un nom d\'employé'); return; }
-  const addBtn = document.getElementById('addBtn');
-  addBtn.disabled = true;
-  setStatus('Ajout de l\'employé...');
+  const name = document.getElementById('newEmployee').value.trim();
+  if(!name) return alert('Saisir un nom.');
   const uuid = generateUUID();
   try {
-    const payload = { records: [{ fields: { NomComplet: name, UUID: uuid } }] };
     const res = await fetch(EMPLOYES_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+      method:'POST',
+      headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`,'Content-Type':'application/json'},
+      body: JSON.stringify({ records:[{ fields:{NomComplet:name,UUID:uuid} }] })
     });
-    const json = await res.json();
-    if(!res.ok){
-      const msg = json?.error?.message || JSON.stringify(json);
-      throw new Error(`Airtable ${res.status}: ${msg}`);
-    }
-    input.value = '';
-    setStatus(`Employé "${name}" ajouté`);
-    // sélectionner nouvel employé après rechargement
-    await loadEmployees(json.records?.[0]?.fields?.UUID || json.records?.[0]?.id);
-  } catch(err){
-    console.error('addEmployee error', err);
-    setStatus(`Erreur ajout : ${err.message}`, true);
-    alert('Erreur ajout employé : ' + err.message);
-  } finally { addBtn.disabled = false; }
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error?.message);
+    setStatus('Employé ajouté');
+    document.getElementById('newEmployee').value='';
+    await loadEmployees(uuid);
+  } catch(e){
+    console.error(e);
+    alert('Erreur ajout employé : '+e.message);
+  }
 }
 
-/* ========== POINTAGE (IN/OUT) ========== */
+/* ===== POINTAGE IN/OUT ===== */
 async function punch(type){
   const sel = document.getElementById('employeeSelect');
   const uuid = sel.value;
-  const name = sel.options[sel.selectedIndex]?.text || '';
-  if(!uuid){ alert('Sélectionner un employé'); return; }
-
-  const inBtn = document.getElementById('inBtn');
-  const outBtn = document.getElementById('outBtn');
-  inBtn && (inBtn.disabled = outBtn && outBtn.disabled = true);
+  const name = sel.options[sel.selectedIndex]?.text;
+  if(!uuid) return alert('Sélectionner un employé.');
 
   const now = new Date();
-  const heure = now.toLocaleTimeString('fr-FR', {hour:'2-digit',minute:'2-digit'});
-  const dateIso = now.toISOString().split('T')[0]; // YYYY-MM-DD (Airtable date-compatible)
+  const heure = now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
+  const dateIso = now.toISOString().split('T')[0];
 
-  setStatus(`${type} en cours...`);
   try {
-    const payload = { records: [{ fields: { UUID: uuid, NomComplet: name, TypeAction: type, Heure: heure, Date: dateIso } }] };
-    const res = await fetch(POINTAGES_URL, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+    const payload = {
+      records:[{fields:{
+        UUID:uuid,
+        NomComplet:name,
+        TypeAction:type,
+        Heure:heure,
+        Date:dateIso
+      }}]
+    };
+    const res = await fetch(POINTAGES_URL,{
+      method:'POST',
+      headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`,'Content-Type':'application/json'},
+      body:JSON.stringify(payload)
     });
-    const json = await res.json();
-    if(!res.ok){
-      const msg = json?.error?.message || JSON.stringify(json);
-      throw new Error(`Airtable ${res.status}: ${msg}`);
-    }
+    const data = await res.json();
+    if(!res.ok) throw new Error(data.error?.message);
     setStatus(`${name} a pointé ${type} à ${heure}`);
-    // recharger pointages pour l'employé
     await loadPointages(uuid);
-  } catch(err){
-    console.error('punch error', err);
-    setStatus(`Erreur de pointage : ${err.message}`, true);
-    alert('Erreur lors du pointage :\n' + err.message + '\nVoir console pour plus de détails.');
-  } finally {
-    inBtn && (inBtn.disabled = outBtn && outBtn.disabled = false);
+  } catch(e){
+    console.error(e);
+    setStatus('Erreur de pointage : '+e.message, true);
   }
 }
 
-/* ========== CHARGER POINTAGES (avec filtre client par date) ========== */
-let lastLoadedRecords = []; // stocker pour réutiliser
-async function loadPointages(uuid, startDate=null, endDate=null){
-  const container = document.getElementById('pointages');
-  container.innerHTML = 'Chargement...';
-  setStatus('Chargement pointages...');
-  try {
-    // filterByFormula encodé : on récupère uniquement les records pour UUID
-    const formula = encodeURIComponent(`{UUID}='${uuid}'`);
-    const url = `${POINTAGES_URL}?filterByFormula=${formula}&pageSize=100&sort[0][field]=Date&sort[0][direction]=asc`;
-    const res = await fetch(url, { headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
-    const json = await res.json();
-    if(!res.ok){
-      const msg = json?.error?.message || JSON.stringify(json);
-      throw new Error(`Airtable ${res.status}: ${msg}`);
-    }
-    lastLoadedRecords = json.records || [];
+/* ===== CHARGER POINTAGES ===== */
+async function loadPointages(uuid,start=null,end=null){
+  const cont=document.getElementById('pointages');
+  cont.textContent='Chargement...';
+  try{
+    const formula=encodeURIComponent(`{UUID}='${uuid}'`);
+    const res=await fetch(`${POINTAGES_URL}?filterByFormula=${formula}&sort[0][field]=Date&sort[0][direction]=asc`,{
+      headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`}
+    });
+    const data=await res.json();
+    if(!res.ok) throw new Error(data.error?.message);
+    const recs=data.records||[];
+    cont.innerHTML='';
+    let total=0, lastIn=null;
 
-    // filtrage par période côté client (si fournis)
-    let records = lastLoadedRecords;
-    if(startDate || endDate){
-      const start = startDate ? new Date(startDate) : null;
-      const end   = endDate   ? new Date(endDate)   : null;
-      records = records.filter(r=>{
-        const ds = r.fields.Date;
-        const dObj = parseDateFlexible(ds);
-        if(!dObj) return false;
-        if(start && dObj < start) return false;
-        if(end   && dObj > end)   return false;
-        return true;
-      });
-    }
+    recs.forEach(r=>{
+      const f=r.fields;
+      const t=(f.Heure||'00:00').split(':').map(Number);
+      const mins=t[0]*60+t[1];
+      if(f.TypeAction==='IN') lastIn=mins;
+      else if(f.TypeAction==='OUT' && lastIn!==null){ total+=mins-lastIn; lastIn=null; }
 
-    container.innerHTML = '';
-    if(records.length === 0){
-      container.innerHTML = '<p class="small">Aucun pointage</p>';
-      document.getElementById('totalTime').innerText = '0h 0m';
-      setStatus('Aucun pointage');
-      return;
-    }
-
-    // calcul total et affichage
-    let totalMinutes = 0;
-    let lastIn = null;
-    records.forEach(r=>{
-      const f = r.fields;
-      const timeParts = (f.Heure || '00:00').split(':').map(Number);
-      const minutes = (timeParts[0]||0)*60 + (timeParts[1]||0);
-
-      if(String(f.TypeAction).toUpperCase().includes('IN')) lastIn = minutes;
-      else if(String(f.TypeAction).toUpperCase().includes('OUT') && lastIn !== null) {
-        totalMinutes += (minutes - lastIn);
-        lastIn = null;
-      }
-
-      const div = document.createElement('div');
-      div.className = 'pointage-item';
-      div.innerHTML = `<div>${safeText(f.Date)} &nbsp; ${safeText(f.Heure)} &nbsp; (${safeText(f.TypeAction)})</div>
-                       <div><button class="danger" onclick="deletePointage('${r.id}', '${uuid}')">Supprimer</button></div>`;
-      container.appendChild(div);
+      const div=document.createElement('div');
+      div.className='pointage-item';
+      div.innerHTML=`<div>${f.Date||''} ${f.Heure||''} (${f.TypeAction})</div>`;
+      cont.appendChild(div);
     });
 
-    const h = Math.floor(totalMinutes/60);
-    const m = totalMinutes % 60;
-    document.getElementById('totalTime').innerText = `${h}h ${m}m`;
+    const h=Math.floor(total/60), m=total%60;
+    document.getElementById('totalTime').textContent=`${h}h ${m}m`;
     setStatus('Pointages chargés');
-  } catch(err){
-    console.error('loadPointages error', err);
-    container.innerHTML = `<p class="small">Erreur chargement (voir console)</p>`;
-    setStatus(`Erreur chargement pointages: ${err.message}`, true);
+  }catch(e){
+    console.error(e);
+    cont.textContent='Erreur chargement pointages';
+    setStatus('Erreur chargement pointages',true);
   }
 }
 
-/* ========== SUPPRESSION ========= */
-async function deletePointage(recordId, uuid) {
-  if(!confirm('Confirmer suppression ?')) return;
-  try {
-    const res = await fetch(`${POINTAGES_URL}/${recordId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${AIRTABLE_TOKEN}` } });
-    const json = await res.json();
-    if(!res.ok){
-      const msg = json?.error?.message || JSON.stringify(json);
-      throw new Error(`Airtable ${res.status}: ${msg}`);
-    }
-    setStatus('Pointage supprimé');
-    loadPointages(uuid);
-  } catch(err){
-    console.error('deletePointage error', err);
-    alert('Erreur suppression : ' + err.message);
-  }
-}
-
-/* ========== FILTRAGE PAR DATE (boutons) ========== */
+/* ===== FILTRES ===== */
 function filterByDate(){
-  const start = document.getElementById('startDate').value || null;
-  const end = document.getElementById('endDate').value || null;
-  const uuid = document.getElementById('employeeSelect').value;
-  if(!uuid) return alert('Sélectionne d\'abord un employé');
-  if(start && end && new Date(start) > new Date(end)) return alert('La date de début doit être antérieure à la date de fin');
-  loadPointages(uuid, start, end);
+  const start=document.getElementById('startDate').value;
+  const end=document.getElementById('endDate').value;
+  const uuid=document.getElementById('employeeSelect').value;
+  if(!uuid)return alert('Sélectionne un employé');
+  loadPointages(uuid,start,end);
 }
 function clearFilter(){
-  document.getElementById('startDate').value = '';
-  document.getElementById('endDate').value = '';
-  const uuid = document.getElementById('employeeSelect').value;
-  if(uuid) loadPointages(uuid);
+  document.getElementById('startDate').value='';
+  document.getElementById('endDate').value='';
+  const uuid=document.getElementById('employeeSelect').value;
+  if(uuid)loadPointages(uuid);
 }
 
-/* ========== SELECT CHANGE HANDLER ========== */
+/* ===== ON CHANGE ===== */
 function onEmployeeChange(){
-  const uuid = document.getElementById('employeeSelect').value;
-  if(!uuid){ document.getElementById('pointages').innerHTML = ''; document.getElementById('totalTime').innerText='0h 0m'; return; }
-  document.getElementById('startDate').value = '';
-  document.getElementById('endDate').value = '';
-  loadPointages(uuid);
+  const uuid=document.getElementById('employeeSelect').value;
+  if(uuid) loadPointages(uuid);
+  else { document.getElementById('pointages').innerHTML=''; document.getElementById('totalTime').textContent='0h 0m'; }
 }
 
-/* ========== INIT ========= */
+/* ===== INIT ===== */
 loadEmployees();
 </script>
 </body>
