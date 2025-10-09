@@ -1,238 +1,152 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Pointage Airtable - Version corrigée</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Pointage Airtable Mobile</title>
 <style>
-  body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;color:#222;padding:20px;text-align:center;}
-  section{background:#fff;border-radius:10px;padding:16px;max-width:760px;margin:16px auto;box-shadow:0 3px 10px rgba(0,0,0,0.06)}
-  select,input,button{padding:10px;margin:8px;font-size:15px;border-radius:8px;border:1px solid #d4d7dd}
-  button{background:#2f6fff;color:#fff;border:none;cursor:pointer}
-  button[disabled]{opacity:0.6;cursor:not-allowed}
-  .danger{background:#ff5a5a}
-  .pointage-item{display:flex;justify-content:space-between;align-items:center;padding:6px 8px;border-bottom:1px solid #f0f2f5}
-  #status{margin-top:12px;font-weight:600}
-  .small{font-size:13px;color:#666}
+body{font-family:Arial,Helvetica,sans-serif;background:#f6f8fb;color:#222;padding:12px;text-align:center;}
+section{background:#fff;border-radius:10px;padding:16px;margin:12px 0;box-shadow:0 3px 10px rgba(0,0,0,0.06);}
+select,input,button{padding:14px;margin:8px 0;font-size:16px;border-radius:8px;border:1px solid #d4d7dd;width:100%;box-sizing:border-box;}
+button{background:#2f6fff;color:#fff;border:none;cursor:pointer;font-weight:600;}
+button[disabled]{opacity:0.6;cursor:not-allowed;}
+.danger{background:#ff5a5a;}
+.pointage-item{display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid #f0f2f5;font-size:14px;}
+#pointages{max-height:250px;overflow-y:auto;}
+#status{margin-top:10px;font-weight:600;font-size:15px;}
 </style>
 </head>
 <body>
-  <h1>Pointage Airtable — Corrigé ✅</h1>
 
-  <section>
-    <h3>Employés</h3>
-    <select id="employeeSelect" onchange="onEmployeeChange()">
-      <option value="">Chargement...</option>
-    </select>
-    <div>
-      <input id="newEmployee" placeholder="Nouveau nom (ex : Sébastien)" />
-      <button id="addBtn" onclick="addEmployee()">➕ Ajouter</button>
-    </div>
-  </section>
+<h1>Pointage Airtable Mobile</h1>
 
-  <section>
-    <h3>Pointage</h3>
-    <div>
-      <button id="inBtn" onclick="punch('IN')">Entrée</button>
-      <button id="outBtn" onclick="punch('OUT')">Sortie</button>
-    </div>
-    <p id="status">Statut : prêt</p>
-  </section>
+<section>
+<h3>Employés</h3>
+<select id="employeeSelect" onchange="onEmployeeChange()"><option>Chargement...</option></select>
+<div>
+<input id="newEmployee" placeholder="Nouveau nom" />
+<button id="addBtn" onclick="addEmployee()">➕ Ajouter</button>
+</div>
+</section>
 
-  <section>
-    <h3>Filtrer</h3>
-    <label>Du <input type="date" id="startDate" /></label>
-    <label>Au <input type="date" id="endDate" /></label>
-    <button onclick="filterByDate()">Appliquer filtre</button>
-    <button onclick="clearFilter()">Réinitialiser filtre</button>
-  </section>
+<section>
+<h3>Pointage</h3>
+<div>
+<button id="inBtn" onclick="punch('IN')">Entrée</button>
+<button id="outBtn" onclick="punch('OUT')">Sortie</button>
+</div>
+<p id="status">Statut : prêt</p>
+</section>
 
-  <section>
-    <h3>Historique</h3>
-    <div id="pointages">Chargement...</div>
-    <h4>Total travaillé : <span id="totalTime">0h 0m</span></h4>
-  </section>
+<section>
+<h3>Filtrer</h3>
+<label>Du <input type="date" id="startDate" /></label>
+<label>Au <input type="date" id="endDate" /></label>
+<button onclick="filterByDate()">Appliquer filtre</button>
+<button onclick="clearFilter()">Réinitialiser filtre</button>
+</section>
+
+<section>
+<h3>Historique</h3>
+<div id="pointages">Chargement...</div>
+<h4>Total travaillé : <span id="totalTime">0h 0m</span></h4>
+<button onclick="exportPDF()">📩 Envoyer par email (PDF)</button>
+</section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script>
-/* ===== CONFIGURATION ===== */
-const AIRTABLE_BASE_ID = "appOcHv2PEis68ttI"; 
-const AIRTABLE_TOKEN   = "patavl975YpJzd6UH.28e5ca63db2706bfe435425f9867da23e42e8c35293789c5da7bce1ee8f10e7c"; 
+/* CONFIGURATION Airtable */
+const AIRTABLE_BASE_ID="appOcHv2PEis68ttI"; 
+const AIRTABLE_TOKEN="patavl975YpJzd6UH.28e5ca63db2706bfe435425f9867da23e42e8c35293789c5da7bce1ee8f10e7c";
+const EMPLOYES_TABLE="employes";
+const POINTAGES_TABLE="pointages";
+const EMPLOYES_URL=`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(EMPLOYES_TABLE)}`;
+const POINTAGES_URL=`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(POINTAGES_TABLE)}`;
 
-const EMPLOYES_TABLE = "employes";
-const POINTAGES_TABLE = "pointages";
-
-const EMPLOYES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(EMPLOYES_TABLE)}`;
-const POINTAGES_URL = `https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(POINTAGES_TABLE)}`;
-
-/* ===== OUTILS ===== */
-function setStatus(msg, err=false){
-  const el = document.getElementById('status');
-  el.textContent = `Statut : ${msg}`;
-  el.style.color = err ? 'red' : 'green';
-}
-
-// UUID stable par appareil + nom
-function getOrCreateUUID(employeeName) {
-  const key = `UUID_${employeeName.toLowerCase()}`;
-  let uuid = localStorage.getItem(key);
-  if (!uuid) {
-    uuid = `${crypto.randomUUID?.() || Math.random().toString(36).slice(2)}_${btoa(navigator.userAgent).slice(0,8)}`;
-    localStorage.setItem(key, uuid);
-  }
-  return uuid;
-}
+/* UTILITAIRES */
+function setStatus(msg,err=false){const el=document.getElementById('status');el.textContent=`Statut : ${msg}`;el.style.color=err?'red':'green';}
+function getUUID(name){return 'web-'+name+'-'+navigator.userAgent.split('').map(c=>c.charCodeAt(0).toString(36)).join('').slice(0,6);}
 
 /* ===== CHARGER EMPLOYÉS ===== */
 async function loadEmployees(selectUuid=null){
-  const sel = document.getElementById('employeeSelect');
-  sel.innerHTML = '<option>Chargement...</option>';
-  try {
-    const res = await fetch(EMPLOYES_URL, { headers: { Authorization:`Bearer ${AIRTABLE_TOKEN}` } });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error?.message);
-    sel.innerHTML = '<option value="">-- Sélectionner un employé --</option>';
-    data.records.forEach(rec=>{
-      const uuid = rec.fields.UUID || rec.id;
-      const name = rec.fields.NomComplet || 'Sans nom';
-      const opt = document.createElement('option');
-      opt.value = uuid;
-      opt.textContent = name;
-      sel.appendChild(opt);
+  const sel=document.getElementById('employeeSelect'); sel.innerHTML='<option>Chargement...</option>';
+  try{
+    const res=await fetch(EMPLOYES_URL,{headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`}});
+    const data=await res.json();
+    sel.innerHTML='<option value="">-- Sélectionner un employé --</option>';
+    data.records.forEach(r=>{
+      const name=r.fields.NomComplet||'Sans nom';
+      const uuid=r.fields.UUID||r.id;
+      const opt=document.createElement('option'); opt.value=uuid; opt.textContent=name; sel.appendChild(opt);
     });
-    if(selectUuid) sel.value = selectUuid;
+    if(selectUuid) sel.value=selectUuid;
     setStatus('Employés chargés');
-  } catch(e){
-    console.error(e);
-    setStatus('Erreur chargement employés', true);
-  }
+    if(sel.value) loadPointages(sel.value);
+  }catch(e){console.error(e); setStatus('Erreur chargement employés',true);}
 }
 
 /* ===== AJOUT EMPLOYÉ ===== */
 async function addEmployee(){
-  const name = document.getElementById('newEmployee').value.trim();
-  if(!name) return alert('Saisir un nom.');
-  
-  // Génère un UUID lié à l’appareil et à l’employé
-  const uuid = getOrCreateUUID(name);
-
-  try {
-    const res = await fetch(EMPLOYES_URL, {
-      method:'POST',
-      headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`,'Content-Type':'application/json'},
-      body: JSON.stringify({ records:[{ fields:{NomComplet:name,UUID:uuid} }] })
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error?.message);
-    setStatus('Employé ajouté');
-    document.getElementById('newEmployee').value='';
-    await loadEmployees(uuid);
-  } catch(e){
-    console.error(e);
-    alert('Erreur ajout employé : '+e.message);
-  }
+  const name=document.getElementById('newEmployee').value.trim(); if(!name)return alert('Saisir un nom');
+  const uuid=getUUID(name); document.getElementById('addBtn').disabled=true; setStatus('Ajout en cours...');
+  try{
+    const res=await fetch(EMPLOYES_URL,{method:'POST',headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({records:[{fields:{NomComplet:name,UUID:uuid}}]})});
+    const data=await res.json(); if(!res.ok) throw new Error(data.error?.message);
+    document.getElementById('newEmployee').value=''; setStatus('Employé ajouté'); await loadEmployees(uuid);
+  }catch(e){console.error(e); alert('Erreur ajout employé : '+e.message);}finally{document.getElementById('addBtn').disabled=false;}
 }
 
-/* ===== POINTAGE IN/OUT ===== */
+/* ===== POINTAGE ===== */
 async function punch(type){
-  const sel = document.getElementById('employeeSelect');
-  const name = sel.options[sel.selectedIndex]?.text;
-  if(!name) return alert('Sélectionner un employé.');
-
-  // Récupère l’UUID stable lié à ce nom
-  const uuid = getOrCreateUUID(name);
-
-  const now = new Date();
-  const heure = now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'});
-  const dateIso = now.toISOString().split('T')[0];
-
-  try {
-    const payload = {
-      records:[{fields:{
-        UUID:uuid,
-        NomComplet:name,
-        TypeAction:type,
-        Heure:heure,
-        Date:dateIso
-      }}]
-    };
-    const res = await fetch(POINTAGES_URL,{
-      method:'POST',
-      headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`,'Content-Type':'application/json'},
-      body:JSON.stringify(payload)
-    });
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.error?.message);
-    setStatus(`${name} a pointé ${type} à ${heure}`);
-    await loadPointages(uuid);
-  } catch(e){
-    console.error(e);
-    setStatus('Erreur de pointage : '+e.message, true);
-  }
+  const sel=document.getElementById('employeeSelect'); const uuid=sel.value; const name=sel.options[sel.selectedIndex].text;
+  if(!uuid) return alert('Sélectionner un employé');
+  document.getElementById('inBtn').disabled=document.getElementById('outBtn').disabled=true;
+  setStatus(`${type} en cours...`);
+  const now=new Date(); const heure=now.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'}); const dateIso=now.toISOString().split('T')[0];
+  try{
+    const res=await fetch(POINTAGES_URL,{method:'POST',headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`,'Content-Type':'application/json'},body:JSON.stringify({records:[{fields:{UUID:uuid,NomComplet:name,TypeAction:type,Heure:heure,Date:dateIso}}]})});
+    const data=await res.json(); if(!res.ok) throw new Error(data.error?.message);
+    setStatus(`${name} a pointé ${type} à ${heure}`); await loadPointages(uuid);
+  }catch(e){console.error(e); setStatus('Erreur de pointage : '+e.message,true);}finally{document.getElementById('inBtn').disabled=document.getElementById('outBtn').disabled=false;}
 }
 
 /* ===== CHARGER POINTAGES ===== */
+let lastRecords=[];
 async function loadPointages(uuid,start=null,end=null){
-  const cont=document.getElementById('pointages');
-  cont.textContent='Chargement...';
+  const cont=document.getElementById('pointages'); cont.textContent='Chargement...'; setStatus('Chargement pointages...');
   try{
     const formula=encodeURIComponent(`{UUID}='${uuid}'`);
-    const res=await fetch(`${POINTAGES_URL}?filterByFormula=${formula}&sort[0][field]=Date&sort[0][direction]=asc`,{
-      headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`}
+    const res=await fetch(`${POINTAGES_URL}?filterByFormula=${formula}&sort[0][field]=Date&sort[0][direction]=asc`,{headers:{Authorization:`Bearer ${AIRTABLE_TOKEN}`}});
+    const data=await res.json(); if(!res.ok) throw new Error(data.error?.message); lastRecords=data.records||[];
+    cont.innerHTML=''; let total=0,lastIn=null;
+    lastRecords.forEach(r=>{
+      const f=r.fields; const t=(f.Heure||'00:00').split(':').map(Number); const mins=t[0]*60+t[1];
+      if(f.TypeAction==='IN') lastIn=mins; else if(f.TypeAction==='OUT'&&lastIn!==null){total+=mins-lastIn;lastIn=null;}
+      const div=document.createElement('div'); div.className='pointage-item';
+      div.textContent=`${f.Date||''} ${f.Heure||''} (${f.TypeAction})`; cont.appendChild(div);
     });
-    const data=await res.json();
-    if(!res.ok) throw new Error(data.error?.message);
-    const recs=data.records||[];
-    cont.innerHTML='';
-    let total=0, lastIn=null;
-
-    recs.forEach(r=>{
-      const f=r.fields;
-      const t=(f.Heure||'00:00').split(':').map(Number);
-      const mins=t[0]*60+t[1];
-      if(f.TypeAction==='IN') lastIn=mins;
-      else if(f.TypeAction==='OUT' && lastIn!==null){ total+=mins-lastIn; lastIn=null; }
-
-      const div=document.createElement('div');
-      div.className='pointage-item';
-      div.innerHTML=`<div>${f.Date||''} ${f.Heure||''} (${f.TypeAction})</div>`;
-      cont.appendChild(div);
-    });
-
-    const h=Math.floor(total/60), m=total%60;
-    document.getElementById('totalTime').textContent=`${h}h ${m}m`;
-    setStatus('Pointages chargés');
-  }catch(e){
-    console.error(e);
-    cont.textContent='Erreur chargement pointages';
-    setStatus('Erreur chargement pointages',true);
-  }
+    const h=Math.floor(total/60),m=total%60; document.getElementById('totalTime').textContent=`${h}h ${m}m`; setStatus('Pointages chargés');
+  }catch(e){console.error(e); cont.textContent='Erreur chargement pointages'; setStatus('Erreur pointages : '+e.message,true);}
 }
 
 /* ===== FILTRES ===== */
-function filterByDate(){
-  const start=document.getElementById('startDate').value;
-  const end=document.getElementById('endDate').value;
-  const uuid=document.getElementById('employeeSelect').value;
-  if(!uuid)return alert('Sélectionne un employé');
-  loadPointages(uuid,start,end);
-}
-function clearFilter(){
-  document.getElementById('startDate').value='';
-  document.getElementById('endDate').value='';
-  const uuid=document.getElementById('employeeSelect').value;
-  if(uuid)loadPointages(uuid);
-}
+function filterByDate(){const start=document.getElementById('startDate').value,end=document.getElementById('endDate').value,uuid=document.getElementById('employeeSelect').value;if(!uuid)return alert('Sélectionner un employé'); loadPointages(uuid,start,end);}
+function clearFilter(){document.getElementById('startDate').value='';document.getElementById('endDate').value=''; const uuid=document.getElementById('employeeSelect').value; if(uuid)loadPointages(uuid);}
 
-/* ===== ON CHANGE ===== */
-function onEmployeeChange(){
-  const sel=document.getElementById('employeeSelect');
-  const name=sel.options[sel.selectedIndex]?.text;
-  if(name){
-    const uuid=getOrCreateUUID(name);
-    loadPointages(uuid);
-  } else {
-    document.getElementById('pointages').innerHTML='';
-    document.getElementById('totalTime').textContent='0h 0m';
-  }
+/* ===== EXPORT PDF ===== */
+async function exportPDF(){
+  const { jsPDF } = window.jspdf; const doc=new jsPDF();
+  const sel=document.getElementById('employeeSelect'); const name=sel.options[sel.selectedIndex]?.text||'Employé';
+  doc.setFontSize(16); doc.text(`Historique pointages - ${name}`,10,20);
+  let y=30;
+  lastRecords.forEach(r=>{
+    const f=r.fields;
+    doc.text(`${f.Date||''} ${f.Heure||''} (${f.TypeAction})`,10,y);
+    y+=8;
+  });
+  doc.text(`Total travaillé : ${document.getElementById('totalTime').textContent}`,10,y+5);
+  doc.save(`${name}-pointages.pdf`);
+  alert('PDF généré, tu peux maintenant l’envoyer par email manuellement.');
 }
 
 /* ===== INIT ===== */
